@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Panel de Administración - TuBingo Pro</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; margin: 0; padding: 0; background: #f1f2f6; color: #2d3436; }
+    header { background: #2c3e50; color: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    header h2 { margin: 0; font-size: 1.5rem; }
+    .header-logo { max-height: 60px; max-width: 150px; object-fit: contain; border-radius: 4px; background: rgba(255,255,255,0.1); padding: 4px; display: none; }
+    
+    main { padding: 20px; max-width: 950px; margin: auto; }
+    
+    /* Contenedor del Login */
+    .login-container { max-width: 400px; margin: 100px auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; }
+    .login-container input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
+    
+    /* Interfaz del Dashboard */
+    .dashboard { display: none; }
+    .tarjetas-grid { display: grid; gap: 20px; margin-bottom: 25px; }
+    .tarjeta { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); text-align: center; box-sizing: border-box; }
+    .tarjeta h3 { margin: 0; color: #7f8c8d; font-size: 0.9rem; text-transform: uppercase; }
+    .tarjeta p { margin: 10px 0 0 0; font-size: 2rem; font-weight: bold; color: #2c3e50; }
+    .tarjeta.total-box p { color: #2ecc71; }
+
+    .seccion { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 25px; }
+    .seccion h3 { margin-top: 0; border-bottom: 2px solid #f1f2f6; padding-bottom: 10px; color: #34495e; }
+    
+    .table-container { width: 100%; overflow-x: auto; max-height: 400px; overflow-y: auto; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+    th, td { border-bottom: 1px solid #ddd; padding: 12px; text-align: left; }
+    th { background: #f8f9fa; color: #7f8c8d; position: sticky; top: 0; z-index: 5; }
+    
+    button { width: 100%; padding: 14px; background: #2ecc71; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
+    button:hover { background: #27ae60; }
+    
+    /* Botones de acción en tablas */
+    .btn-accion { padding: 6px 12px; font-size: 13px; width: auto; border-radius: 4px; display: inline-block; margin-right: 5px; font-weight: normal; }
+    .btn-modificar { background: #f1c40f; color: #2c3e50; }
+    .btn-modificar:hover { background: #f39c12; }
+    .btn-borrar-item { background: #ff7675; color: white; }
+    .btn-borrar-item:hover { background: #e84393; }
+
+    /* Inputs de Configuración y Búsqueda */
+    .busqueda-input { width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 15px; }
+    .config-flex { display: flex; gap: 15px; align-items: center; margin-top: 10px; }
+    .config-flex input { flex: 1; padding: 11px; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; font-weight: bold; text-transform: uppercase; color: #2c3e50; }
+    
+    /* Formulario de Configuración de Parámetros Globales */
+    .grid-parametros { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-bottom: 15px; }
+    .grupo-input { display: flex; flex-direction: column; }
+    .grupo-input label { font-size: 0.85rem; font-weight: bold; color: #57606f; margin-bottom: 5px; }
+    .grupo-input input { padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 15px; color: #2c3e50; box-sizing: border-box; }
+
+    /* Variaciones de botones */
+    .btn-azul { background: #3498db; width: auto; padding: 11px 25px; }
+    .btn-azul:hover { background: #2980b9; }
+    .btn-descarga { background: #2ecc71; width: auto; padding: 12px 22px; font-size: 15px; display: inline-flex; align-items: center; gap: 8px; }
+    .btn-descarga:hover { background: #27ae60; }
+    .btn-regresar { background: #7f8c8d; width: auto; padding: 12px 22px; font-size: 15px; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-flex; align-items: center; }
+
+    .btn-peligro { background: #ff7675; margin-top: 15px; }
+    .btn-peligro:hover { background: #d63031; }
+    
+    .loading { opacity: 0.5; pointer-events: none; }
+
+    /* Estilos para el selector de diseño */
+    .diseno-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-top: 15px; }
+    .color-picker-wrapper { display: flex; align-items: center; gap: 10px; }
+    .color-picker-wrapper input[type="color"] { width: 50px; height: 40px; border: none; cursor: pointer; border-radius: 4px; }
+  </style>
+  
+  <script src="https://unpkg.com/@supabase/supabase-js@2" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+  <script src="conexion.js" defer></script>
+  <script src="auth.js" defer></script>
+</head>
+<body>
+
+  <div id="vistaDashboard" class="dashboard">
+    <header id="panelHeader" style="position:relative;">
+      <h2>Panel General de Control - TuBingo Pro</h2>
+      <img id="imgLogoPanel" class="header-logo" src="" alt="Logo">
+      <button onclick="cerrarSesion()" style="position:absolute; right:20px; width:auto; padding:8px 14px; font-size:13px; background:rgba(255,255,255,0.2);">Salir</button>
+    </header>
+    <main id="mainPanel">
+      
+      <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+        <a href="registro.html" class="btn-regresar">⬅️ Ir al Formulario de Registro</a>
+        <button id="btnExportarExcel" class="btn-descarga" onclick="descargarBaseDatosExcel()">🟢 Descargar Excel (Formato Oficial)</button>
+      </div>
+
+      <div class="tarjetas-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+        <div class="tarjeta total-box">
+          <h3>Total Cartones</h3>
+          <p id="txtTotalCartones">0</p>
+        </div>
+        <div class="tarjeta" style="border-top: 4px solid #3498db;">
+          <h3>Celulares Únicos</h3>
+          <p id="txtTotalCelulares" style="color: #3498db;">0</p>
+        </div>
+        <div class="tarjeta" style="border-top: 4px solid #9b59b6;">
+          <h3>Cliente con Más Cartones</h3>
+          <p id="txtClienteTop" style="font-size: 1.1rem; padding-top: 10px; color: #9b59b6; line-height: 1.2;">Cargando...</p>
+        </div>
+        <div class="tarjeta">
+          <h3>Sectores Activos</h3>
+          <p id="txtTotalSectores">0</p>
+        </div>
+      </div>
+
+      <div class="seccion" style="border-left: 5px solid #9b59b6;">
+        <h3 style="color: #8e44ad;">🎨 Paleta de Diseño y Marca Personalizada</h3>
+        <p style="font-size:0.85rem; color:#7f8c8d; margin-bottom: 15px;">Cambia la apariencia del Registro de Clientes (acepta SVG, PNG, JPG, WEBP) y de este Panel de Control.</p>
+        
+        <div style="margin-bottom: 15px;">
+          <label style="font-weight: bold; font-size: 0.9rem; display:block; margin-bottom:5px;">Enlace (URL) de tu Logotipo:</label>
+          <input type="text" id="inputLogoUrl" class="busqueda-input" style="margin-bottom:0;" placeholder="https://tuservidor.com/imagen.png o .svg">
+        </div>
+
+        <div class="diseno-grid">
+          <div class="color-picker-wrapper">
+            <input type="color" id="colorRegistro" value="#4CAF50">
+            <div>
+              <strong style="font-size:0.9rem; display:block;">Color Global Registro</strong>
+              <small style="color:#7f8c8d;">Formulario Público</small>
+            </div>
+          </div>
+          <div class="color-picker-wrapper">
+            <input type="color" id="colorPanel" value="#2c3e50">
+            <div>
+              <strong style="font-size:0.9rem; display:block;">Color Cabecera Panel</strong>
+              <small style="color:#7f8c8d;">Este Administrador</small>
+            </div>
+          </div>
+          <div style="text-align: right; display: flex; align-items: center; justify-content: flex-end;">
+            <button id="btnGuardarDiseno" class="btn-azul" style="background:#8e44ad; width:100%;" onclick="guardarDisenoPersonalizado()">💾 Guardar Imagen y Colores</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="seccion" style="border-left: 5px solid #2ecc71;">
+        <h3 style="color: #27ae60; margin-bottom: 5px;">🔑 Código Activo del Canal de WhatsApp</h3>
+        <p style="font-size:0.85rem; color:#7f8c8d; margin: 0 0 10px 0;">El código que guardes aquí será el que exija obligatoriamente el formulario de los clientes para permitirles registrarse.</p>
+        <div class="config-flex">
+          <input type="text" id="inputCodigoAdmin" placeholder="Cargando código actual...">
+          <button id="btnGuardarCodigoCanal" class="btn-azul" onclick="actualizarCodigoCanal()">Actualizar Código</button>
+        </div>
+      </div>
+
+      <div class="seccion">
+        <h3>Resumen General de Clientes</h3>
+        <p style="font-size:0.85rem; color:#7f8c8d; margin-top:-5px;">Muestra el total de cartones acumulados por cada nombre y cuántos números telefónicos distintos usó.</p>
+        <div class="table-container">
+          <table id="tablaResumenClientes">
+            <thead>
+              <tr>
+                <th>Nombre del Cliente</th>
+                <th style="text-align: center;">Cartones Registrados</th>
+                <th style="text-align: center;">Números de Celular Usados</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="3" style="color:#999; text-align:center;">Cargando lista analítica...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="seccion">
+        <h3>Gestión Individual de Cartones (Uno por Uno)</h3>
+        <input type="text" id="inputBuscar" class="busqueda-input" oninput="filtrarCartones()" placeholder="🔍 Buscar por nombre de cliente, número de celular o serie de cartón...">
+        <div class="table-container">
+          <table id="tablaIndividualCartones">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Serie (Cartón)</th>
+                <th>Cliente</th>
+                <th>Celular</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="5" style="color:#999; text-align:center;">Cargando base de datos individual...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="seccion">
+        <h3>Mapeo de Registros por Sectores</h3>
+        <table id="tablaSectores">
+          <thead>
+            <tr>
+              <th>Sector / Ciudad</th>
+              <th style="text-align: right;">Cantidad de Cartones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="2" style="color:#999;">Cargando datos...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="seccion" style="border-left: 5px solid #f1c40f;">
+        <h3 style="color: #d35400;">⚙️ Parámetros y Restricciones Globales del Bingo</h3>
+        <p style="font-size:0.85rem; color:#7f8c8d; margin-top:-5px;">Controla los límites y la fecha límite de cierre para el registro general de cartones de juego.</p>
+        
+        <div class="grid-parametros">
+          <div class="grupo-input">
+            <label for="inputLimCartonesGlobal">Límite de Cartones:</label>
+            <input type="number" id="inputLimCartonesGlobal" placeholder="Ej: 10">
+          </div>
+          <div class="grupo-input">
+            <label for="inputCaracteresQrGlobal">Caracteres QR:</label>
+            <input type="number" id="inputCaracteresQrGlobal" placeholder="Ej: 6">
+          </div>
+          <div class="grupo-input">
+            <label for="inputFechaCierreGlobal">Fecha y Hora de Cierre (Ecuador):</label>
+            <input type="datetime-local" id="inputFechaCierreGlobal">
+          </div>
+        </div>
+        <button id="btnActualizarParametros" class="btn-azul" style="background: #e67e22; width: 100%;" onclick="guardarConfiguracionGlobalTable()">💾 Actualizar Parámetros Globales</button>
+      </div>
+
+      <div class="seccion" style="border-left: 5px solid #3498db;">
+        <h3 style="color: #2980b9;">🧑‍💼 Gestión de Usuarios</h3>
+        <p style="font-size:0.85rem; color:#7f8c8d; margin-top:-5px;">Crea administradores o vendedores, suspéndelos, resetéales la contraseña o elimínalos.</p>
+
+        <div class="grid-parametros">
+          <div class="grupo-input">
+            <label for="nuevoUsuarioCorreo">Correo:</label>
+            <input type="email" id="nuevoUsuarioCorreo" placeholder="correo@ejemplo.com">
+          </div>
+          <div class="grupo-input">
+            <label for="nuevoUsuarioNombre">Nombre:</label>
+            <input type="text" id="nuevoUsuarioNombre" placeholder="Nombre completo">
+          </div>
+          <div class="grupo-input">
+            <label for="nuevoUsuarioClave">Contraseña inicial:</label>
+            <input type="text" id="nuevoUsuarioClave" placeholder="Mínimo 6 caracteres">
+          </div>
+          <div class="grupo-input">
+            <label for="nuevoUsuarioRol" style="display:none;">Rol:</label>
+            <select id="nuevoUsuarioRol" style="display:none;">
+              <option value="usuario" selected>Usuario (registra cartones)</option>
+            </select>
+            <p style="font-size:0.8rem; color:#7f8c8d;">Se crea como <strong>vendedor</strong> de tu cliente. Solo el super administrador puede crear otros administradores.</p>
+          </div>
+        </div>
+        <button class="btn-azul" style="background:#2980b9; width:100%;" onclick="crearUsuarioNuevo()">➕ Crear Usuario</button>
+
+        <div class="table-container" style="margin-top:20px;">
+          <table id="tablaUsuarios">
+            <thead>
+              <tr>
+                <th>Correo</th>
+                <th>Nombre</th>
+                <th>Rol</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="5" style="color:#999; text-align:center;">Cargando usuarios...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="seccion" style="border: 1px solid #ff7675;">
+        <h3 style="color: #d63031;">Zona de Peligro (Cierre de Evento)</h3>
+        <p style="font-size:0.9rem; color:#636e72;">Descarga el respaldo completo en Excel y vacía la base de datos de manera irreversible.</p>
+        <button class="btn-peligro" onclick="procesarLimpiezaAbsoluta()">VACIAR TABLA DE BINGO (BORRADO TOTAL)</button>
+      </div>
+
+    </main>
+  </div>
+
+  <script>
+    let cacheRegistros = [];
+
+    window.addEventListener('load', async () => {
+      // Exige sesión iniciada Y rol admin. Si no cumple, redirige solo.
+      const acceso = await requerirSesion('admin');
+      if (!acceso) return;
+
+      document.getElementById("vistaDashboard").style.display = "block";
+      window.MI_TENANT_ID = acceso.perfil.tenant_id;
+
+      if (!acceso.habilitado) {
+        bloquearPorSuscripcionVencida(["btnActualizarParametros", "btnGuardarDiseno", "btnGuardarCodigoCanal"]);
+      }
+
+      cargarMetricasDelSistema();
+      cargarCodigoCanalActual();
+      cargarDisenoEnPanel();
+      cargarConfiguracionGlobalTable();
+      cargarUsuarios();
+    });
+
+    async function cargarDisenoEnPanel() {
+      try {
+        const { data } = await _supabase.from('configuracion_sistema').select('clave, valor');
+        if(data) {
+          let logo = data.find(x => x.clave === 'diseno_logo_url')?.valor;
+          let colPanel = data.find(x => x.clave === 'diseno_color_panel')?.valor;
+          let colReg = data.find(x => x.clave === 'diseno_color_principal')?.valor;
+
+          if(logo && logo.trim() !== "") { 
+            let imgEl = document.getElementById("imgLogoPanel");
+            imgEl.src = logo; 
+            imgEl.style.display = "block";
+            document.getElementById("inputLogoUrl").value = logo; 
+          }
+          if(colPanel) { 
+            document.getElementById("panelHeader").style.background = colPanel; 
+            document.getElementById("colorPanel").value = colPanel; 
+          }
+          if(colReg) { 
+            document.getElementById("colorRegistro").value = colReg; 
+          }
+        }
+      } catch(e){ console.error(e); }
+    }
+
+    async function guardarDisenoPersonalizado() {
+      let logoUrl = document.getElementById("inputLogoUrl").value.trim();
+      let colReg = document.getElementById("colorRegistro").value;
+      let colPan = document.getElementById("colorPanel").value;
+
+      if (logoUrl !== "") {
+        const expresionExtensiones = /\.(svg|png|jpg|jpeg|webp|gif)(\?.*)?$/i;
+        if (!expresionExtensiones.test(logoUrl)) {
+          alert("⚠️ Formato de imagen no reconocido.\nPor favor ingresa un enlace que termine en .svg, .png, .jpg, .jpeg o .webp");
+          return;
+        }
+      }
+
+      document.getElementById("mainPanel").classList.add("loading");
+      
+      const filasAActualizar = [
+        { tenant_id: window.MI_TENANT_ID, clave: 'diseno_logo_url', valor: logoUrl },
+        { tenant_id: window.MI_TENANT_ID, clave: 'diseno_color_principal', valor: colReg },
+        { tenant_id: window.MI_TENANT_ID, clave: 'diseno_color_panel', valor: colPan }
+      ];
+
+      try {
+        const { error } = await _supabase
+          .from('configuracion_sistema')
+          .upsert(filasAActualizar, { onConflict: 'tenant_id,clave' });
+
+        if (error) throw error;
+        
+        document.getElementById("panelHeader").style.background = colPan;
+        let imgEl = document.getElementById("imgLogoPanel");
+        if(logoUrl !== "") {
+          imgEl.src = logoUrl;
+          imgEl.style.display = "block";
+        } else {
+          imgEl.style.display = "none";
+        }
+        alert("🎉 ¡Diseño de marca y colores guardados exitosamente!");
+      } catch(err) { 
+        alert("Error de guardado: " + err.message); 
+        console.error(err);
+      } finally { 
+        document.getElementById("mainPanel").classList.remove("loading"); 
+      }
+    }
+
+    async function cargarMetricasDelSistema() {
+      try {
+        const { data: todosLosRegistros, error: errRegistros } = await _supabase
+          .from('registros_bingo')
+          .select('id, carton, nombre, telefono')
+          .order('id', { ascending: false });
+
+        if (errRegistros) throw errRegistros;
+        cacheRegistros = todosLosRegistros || [];
+
+        let totalCartones = cacheRegistros.length;
+        let listaCelulares = new Set();
+        let conteoNombres = {};
+        let telefonosPorNombre = {};
+
+        cacheRegistros.forEach(r => {
+          let t = r.telefono ? r.telefono.trim() : "";
+          let n = r.nombre ? r.nombre.trim().toUpperCase() : "SIN NOMBRE";
+          if (t) listaCelulares.add(t);
+          conteoNombres[n] = (conteoNombres[n] || 0) + 1;
+          if (!telefonosPorNombre[n]) telefonosPorNombre[n] = new Set();
+          if (t) telefonosPorNombre[n].add(t);
+        });
+
+        let nombreMasRepetido = "Ninguno", maxCartones = 0;
+        for (let nombre in conteoNombres) {
+          if (conteoNombres[nombre] > maxCartones) { maxCartones = conteoNombres[nombre]; nombreMasRepetido = nombre; }
+        }
+
+        document.getElementById("txtTotalCartones").innerText = totalCartones;
+        document.getElementById("txtTotalCelulares").innerText = listaCelulares.size;
+        document.getElementById("txtClienteTop").innerHTML = maxCartones > 0 
+          ? `<strong style="font-size:1rem; color:#2c3e50;">${nombreMasRepetido}</strong><br><span style="font-size:0.85rem; color:#7f8c8d;">(${maxCartones} cartones)</span>`
+          : "Ninguno";
+
+        let tbodyResumen = document.querySelector("#tablaResumenClientes tbody");
+        tbodyResumen.innerHTML = "";
+        for (let nombre in conteoNombres) {
+          tbodyResumen.innerHTML += `<tr><td><strong>${nombre}</strong></td><td style="text-align: center; font-weight: bold; color: #2ecc71;">${conteoNombres[nombre]}</td><td style="text-align: center; color: #3498db;">${telefonosPorNombre[nombre].size}</td></tr>`;
+        }
+
+        renderizarTablaIndividual(cacheRegistros);
+
+        const { data: sectores } = await _supabase.rpc('obtener_estadisticas_sectores');
+        let tbodySectores = document.querySelector("#tablaSectores tbody");
+        tbodySectores.innerHTML = "";
+        if (sectores) {
+          sectores.forEach(row => {
+            tbodySectores.innerHTML += `<tr><td><strong>${row.sector || "No especificado"}</strong></td><td style="text-align: right; font-weight:bold; color:#2c3e50;">${row.total}</td></tr>`;
+          });
+        }
+      } catch (err) { console.error(err); }
+    }
+
+    function renderizarTablaIndividual(datos) {
+      let tbodyInd = document.querySelector("#tablaIndividualCartones tbody");
+      tbodyInd.innerHTML = "";
+      datos.forEach((r, index) => {
+        tbodyInd.innerHTML += `
+          <tr>
+            <td>${index + 1}</td>
+            <td><mark style="background:#eccc68; padding:2px 6px; border-radius:4px; font-weight:bold;">${r.carton}</mark></td>
+            <td>${r.nombre || "---"}</td>
+            <td>${r.telefono || "---"}</td>
+            <td>
+              <button class="btn-accion btn-modificar" onclick="modificarCartonIndividual(${r.id}, '${r.carton}', '${r.nombre}')">Modificar</button>
+              <button class="btn-accion btn-borrar-item" onclick="eliminarCartonIndividual(${r.id}, '${r.carton}', '${r.nombre}')">Eliminar</button>
+            </td>
+          </tr>`;
+      });
+    }
+
+    function filtrarCartones() {
+      let texto = document.getElementById("inputBuscar").value.toLowerCase().trim();
+      let filtrados = cacheRegistros.filter(r => r.nombre.toLowerCase().includes(texto) || r.telefono.includes(texto) || r.carton.toLowerCase().includes(texto));
+      renderizarTablaIndividual(filtrados);
+    }
+
+    async function modificarCartonIndividual(id, cartonActual, cliente) {
+      let nuevoCodigo = prompt(`Modificando registro de ${cliente}.\n\nEscribe el NUEVO código de serie (Actual: ${cartonActual}):`);
+      if (!nuevoCodigo || nuevoCodigo.trim() === cartonActual) return;
+
+      try {
+        await _supabase.from('registros_bingo').update({ carton: nuevoCodigo.trim() }).eq('id', id);
+        alert("¡Cartón modificado con éxito!");
+        cargarMetricasDelSistema();
+      } catch (err) { alert(err.message); }
+    }
+
+    async function eliminarCartonIndividual(id, carton, cliente) {
+      if (!confirm(`¿Eliminar el cartón "${carton}" de ${cliente}?`)) return;
+      try {
+        await _supabase.from('registros_bingo').delete().eq('id', id);
+        alert("Registro eliminado.");
+        cargarMetricasDelSistema();
+      } catch (err) { alert(err.message); }
+    }
+
+    async function descargarBaseDatosExcel() {
+      try {
+        const { data } = await _supabase.from('registros_bingo').select('carton, nombre, ciudad, correo, telefono').order('id', { ascending: true });
+        if (!data || data.length === 0) return alert("No hay datos.");
+        
+        const filasProcesadas = data.map(row => ({ "CARTON": row.carton, "NOMBRES": row.nombre, "UNO_PARTICIPA": 1, "CIUDAD": row.ciudad, "CORREO": row.correo, "TELEFONO": row.telefono }));
+        const libroTrabajo = XLSX.utils.book_new();
+        const hojaTrabajo = XLSX.utils.json_to_sheet(filasProcesadas);
+        XLSX.utils.book_append_sheet(libroTrabajo, hojaTrabajo, "CARTONES");
+        
+        const rango = XLSX.utils.decode_range(hojaTrabajo['!ref']);
+        for (let R = rango.s.r + 1; R <= rango.e.r; ++R) {
+          let cA = hojaTrabajo[XLSX.utils.encode_cell({r: R, c: 0})]; if(cA) cA.t = 's';
+          let cF = hojaTrabajo[XLSX.utils.encode_cell({r: R, c: 5})]; if(cF) cF.t = 's';
+        }
+        XLSX.writeFile(libroTrabajo, `registros_tubingo_pro.xlsx`);
+      } catch (err) { alert(err.message); }
+    }
+
+    async function procesarLimpiezaAbsoluta() {
+      if (confirm("¿Vaciar todo?") && prompt("Escriba BORRAR") === "BORRAR") {
+        await descargarBaseDatosExcel();
+        await _supabase.rpc('vaciar_tabla_bingo');
+        alert("Base de datos limpia.");
+        cargarMetricasDelSistema();
+      }
+    }
+
+    async function cargarCodigoCanalActual() {
+      const { data } = await _supabase.from('configuracion_sistema').select('valor').eq('tenant_id', window.MI_TENANT_ID).eq('clave', 'codigo_canal_whatsapp').maybeSingle();
+      if (data) document.getElementById("inputCodigoAdmin").value = data.valor;
+    }
+
+    async function actualizarCodigoCanal() {
+      let nuevoCodigo = document.getElementById("inputCodigoAdmin").value.trim().toUpperCase();
+      if (!nuevoCodigo) return;
+      await _supabase.from('configuracion_sistema').upsert({ tenant_id: window.MI_TENANT_ID, clave: 'codigo_canal_whatsapp', valor: nuevoCodigo }, { onConflict: 'tenant_id,clave' });
+      alert(`¡Éxito! El código se actualizó a "${nuevoCodigo}".`);
+    }
+
+    /* =========================================================================
+       MEJORAS UNIFICADAS DE LECTURA Y ESCRITURA PARA LA TABLA CONFIGURACION
+       ========================================================================= */
+
+    /* CARGAR DATOS DE LA TABLA CONFIGURACION */
+    async function cargarConfiguracionGlobalTable() {
+      try {
+        const { data, error } = await _supabase.from('configuracion').select('*').eq('tenant_id', window.MI_TENANT_ID).maybeSingle();
+        if (error) throw error;
+        if (data) {
+          document.getElementById("inputLimCartonesGlobal").value = data.limite_cartones;
+          document.getElementById("inputCaracteresQrGlobal").value = data.caracteres_qr;
+          
+          // MEJORA 1: Mapeo exacto de la columna 'fecha_cierre' con guion bajo
+          if (data.fecha_cierre) {
+            let d = new Date(data.fecha_cierre);
+            let year = d.getFullYear();
+            let month = String(d.getMonth() + 1).padStart(2, '0');
+            let day = String(d.getDate()).padStart(2, '0');
+            let hours = String(d.getHours()).padStart(2, '0');
+            let minutes = String(d.getMinutes()).padStart(2, '0');
+            
+            document.getElementById("inputFechaCierreGlobal").value = `${year}-${month}-${day}T${hours}:${minutes}`;
+          }
+        }
+      } catch (err) {
+        console.error("Error cargando tabla configuracion:", err.message);
+      }
+    }
+
+    
+/* GUARDAR DATOS USANDO RPC (SINOPSIS DE PERMISOS ABSOLUTOS) */
+async function guardarConfiguracionGlobalTable() {
+  let limCartones = document.getElementById("inputLimCartonesGlobal").value;
+  let carQr = document.getElementById("inputCaracteresQrGlobal").value;
+  let fechaCierre = document.getElementById("inputFechaCierreGlobal").value;
+
+  if (!limCartones || !carQr || !fechaCierre) {
+    alert("⚠️ Por favor, complete todos los campos de configuración antes de continuar.");
+    return;
+  }
+
+  let mensajeConfirmacion = `❓ ¿Está seguro que desea actualizar los parámetros globales del Bingo?\n\n` +
+                            `• Límite de Cartones: ${limCartones}\n` +
+                            `• Caracteres QR: ${carQr}\n` +
+                            `• Fecha de Cierre: ${fechaCierre.replace("T", " ")}\n\n` +
+                            `Presione ACEPTAR para guardar los cambios o CANCELAR para salir.`;
+
+  if (!confirm(mensajeConfirmacion)) {
+    return; 
+  }
+
+  document.getElementById("mainPanel").classList.add("loading");
+
+  try {
+    let objetoFechaNativo = new Date(fechaCierre);
+
+    // Invocamos la función RPC que creamos en el editor SQL.
+    // Al ser SECURITY DEFINER, actualizará la tabla obligatoriamente aunque el RLS esté bloqueado.
+    const { error } = await _supabase.rpc('actualizar_configuracion_global', {
+      p_limite_cartones: Number(limCartones),
+      p_caracteres_qr: Number(carQr),
+      p_fecha_cierre: objetoFechaNativo
+    });
+
+    if (error) throw error;
+    
+    alert("🎉 ¡Parámetros globales actualizados con éxito directamente en el servidor!");
+    
+  } catch (err) {
+    alert("❌ Error crítico en el servidor: " + err.message);
+    console.error("Detalle del error:", err);
+  } finally {
+    document.getElementById("mainPanel").classList.remove("loading");
+  }
+}
+
+/* =========================================================================
+   GESTIÓN DE USUARIOS (crear, suspender, resetear clave, eliminar)
+   Crear / resetear clave / eliminar pasan por la Edge Function
+   "admin-usuarios", porque requieren la llave service_role del servidor.
+   Suspender / reactivar se hace directo en la tabla "perfiles" (RLS lo permite
+   porque el que llama ya es admin).
+   ========================================================================= */
+
+async function llamarFuncionAdmin(accion, datosExtra) {
+  const { data: { session } } = await _supabase.auth.getSession();
+  const respuesta = await fetch(`${SUPABASE_URL}/functions/v1/admin-usuarios`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${session.access_token}`
+    },
+    body: JSON.stringify({ accion, ...datosExtra })
+  });
+  return await respuesta.json();
+}
+
+async function cargarUsuarios() {
+  try {
+    const { data, error } = await _supabase
+      .from('perfiles')
+      .select('id, correo, nombre, rol, activo')
+      .eq('tenant_id', window.MI_TENANT_ID)
+      .order('correo', { ascending: true });
+
+    if (error) throw error;
+
+    const tbody = document.querySelector("#tablaUsuarios tbody");
+    tbody.innerHTML = "";
+
+    if (!data || data.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#999;">No hay usuarios todavía</td></tr>`;
+      return;
+    }
+
+    data.forEach(u => {
+      const estaActivo = u.activo !== false;
+      tbody.innerHTML += `
+        <tr>
+          <td>${u.correo || "---"}</td>
+          <td>${u.nombre || "---"}</td>
+          <td>${u.rol === 'admin' ? '👑 Admin' : 'Usuario'}</td>
+          <td style="color:${estaActivo ? '#2ecc71' : '#d63031'}; font-weight:bold;">${estaActivo ? 'Activo' : 'Suspendido'}</td>
+          <td>
+            <button class="btn-accion ${estaActivo ? 'btn-borrar-item' : 'btn-modificar'}" onclick="alternarSuspension('${u.id}', ${estaActivo})">${estaActivo ? 'Suspender' : 'Reactivar'}</button>
+            <button class="btn-accion btn-modificar" onclick="resetearClaveUsuario('${u.id}', '${u.correo}')">Resetear Clave</button>
+            <button class="btn-accion btn-borrar-item" onclick="eliminarUsuarioDefinitivo('${u.id}', '${u.correo}')">Eliminar</button>
+          </td>
+        </tr>`;
+    });
+  } catch (err) {
+    console.error("Error cargando usuarios:", err.message);
+  }
+}
+
+async function crearUsuarioNuevo() {
+  const correo = document.getElementById("nuevoUsuarioCorreo").value.trim();
+  const nombre = document.getElementById("nuevoUsuarioNombre").value.trim();
+  const clave = document.getElementById("nuevoUsuarioClave").value;
+  const rol = document.getElementById("nuevoUsuarioRol").value;
+
+  if (!correo || !clave) { alert("Correo y contraseña inicial son obligatorios."); return; }
+  if (clave.length < 6) { alert("La contraseña debe tener al menos 6 caracteres."); return; }
+
+  document.getElementById("mainPanel").classList.add("loading");
+  try {
+    const resultado = await llamarFuncionAdmin("crear_usuario", { correo, clave, nombre, rol });
+    if (resultado.error) { alert("❌ " + resultado.error); return; }
+
+    alert(`✅ Usuario creado. Comparte estas credenciales con la persona:\n\nCorreo: ${correo}\nContraseña: ${clave}`);
+    document.getElementById("nuevoUsuarioCorreo").value = "";
+    document.getElementById("nuevoUsuarioNombre").value = "";
+    document.getElementById("nuevoUsuarioClave").value = "";
+    cargarUsuarios();
+  } catch (err) {
+    alert("❌ Error: " + err.message);
+  } finally {
+    document.getElementById("mainPanel").classList.remove("loading");
+  }
+}
+
+async function alternarSuspension(userId, estabaActivo) {
+  const accion = estabaActivo ? "suspender" : "reactivar";
+  if (!confirm(`¿Seguro que deseas ${accion} a este usuario?`)) return;
+
+  try {
+    const { error } = await _supabase.from('perfiles').update({ activo: !estabaActivo }).eq('id', userId);
+    if (error) throw error;
+    cargarUsuarios();
+  } catch (err) {
+    alert("❌ Error: " + err.message);
+  }
+}
+
+async function resetearClaveUsuario(userId, correo) {
+  const claveNueva = prompt(`Escribe la NUEVA contraseña temporal para ${correo} (mínimo 6 caracteres):`);
+  if (!claveNueva) return;
+  if (claveNueva.length < 6) { alert("La contraseña debe tener al menos 6 caracteres."); return; }
+
+  try {
+    const resultado = await llamarFuncionAdmin("resetear_clave", { userId, claveNueva });
+    if (resultado.error) { alert("❌ " + resultado.error); return; }
+    alert(`✅ Contraseña actualizada. Compártele a ${correo} su nueva contraseña temporal:\n\n${claveNueva}`);
+  } catch (err) {
+    alert("❌ Error: " + err.message);
+  }
+}
+
+async function eliminarUsuarioDefinitivo(userId, correo) {
+  if (!confirm(`¿ELIMINAR definitivamente la cuenta de ${correo}? Esta acción no se puede deshacer.`)) return;
+  if (prompt(`Escribe ELIMINAR para confirmar:`) !== "ELIMINAR") return;
+
+  try {
+    const resultado = await llamarFuncionAdmin("eliminar_usuario", { userId });
+    if (resultado.error) { alert("❌ " + resultado.error); return; }
+    alert("✅ Usuario eliminado.");
+    cargarUsuarios();
+  } catch (err) {
+    alert("❌ Error: " + err.message);
+  }
+}
+
+  </script>
+</body>
+</html>

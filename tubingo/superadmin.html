@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Super Admin - TuBingo Pro</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; margin: 0; padding: 0; background: #f1f2f6; color: #2d3436; }
+    header { background: #1e272e; color: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.1); position: relative; }
+    header h2 { margin: 0; font-size: 1.5rem; }
+    main { padding: 20px; max-width: 1100px; margin: auto; }
+
+    .seccion { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 25px; }
+    .seccion h3 { margin-top: 0; border-bottom: 2px solid #f1f2f6; padding-bottom: 10px; color: #34495e; }
+
+    .table-container { width: 100%; overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    th, td { border-bottom: 1px solid #ddd; padding: 12px; text-align: left; }
+    th { background: #f8f9fa; color: #7f8c8d; }
+
+    button { padding: 10px 18px; background: #2ecc71; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer; }
+    button:hover { background: #27ae60; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+
+    .btn-accion { padding: 6px 12px; font-size: 12px; border-radius: 4px; display: inline-block; margin-right: 5px; font-weight: normal; cursor:pointer; border:none; color:white; }
+    .btn-modificar { background: #f1c40f; color: #2c3e50; }
+    .btn-borrar-item { background: #ff7675; }
+    .btn-azul { background: #3498db; }
+
+    .grid-parametros { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-bottom: 15px; }
+    .grupo-input { display: flex; flex-direction: column; }
+    .grupo-input label { font-size: 0.85rem; font-weight: bold; color: #57606f; margin-bottom: 5px; }
+    .grupo-input input, .grupo-input select { padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 15px; box-sizing: border-box; }
+
+    .estado-vigente { color: #2ecc71; font-weight: bold; }
+    .estado-vencido { color: #d63031; font-weight: bold; }
+    .estado-suspendido { color: #7f8c8d; font-weight: bold; }
+
+    .loading { opacity: 0.5; pointer-events: none; }
+  </style>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="conexion.js"></script>
+  <script src="auth.js"></script>
+</head>
+<body>
+
+  <header>
+    <h2>👑 Panel Super Administrador - TuBingo Pro</h2>
+    <button onclick="cerrarSesion()" style="width:auto; background:rgba(255,255,255,0.2);">Salir</button>
+  </header>
+
+  <main id="mainPanel">
+
+    <div class="seccion">
+      <h3>➕ Crear Nuevo Cliente (Tenant)</h3>
+      <div class="grid-parametros">
+        <div class="grupo-input">
+          <label for="nuevoSlug">Slug (va en la URL):</label>
+          <input type="text" id="nuevoSlug" placeholder="ej: triunfobingo">
+        </div>
+        <div class="grupo-input">
+          <label for="nuevoNombreTenant">Nombre del cliente:</label>
+          <input type="text" id="nuevoNombreTenant" placeholder="ej: Triunfo Bingo">
+        </div>
+        <div class="grupo-input">
+          <label for="nuevoLogoTenant">Logo (URL, opcional):</label>
+          <input type="text" id="nuevoLogoTenant" placeholder="https://...">
+        </div>
+        <div class="grupo-input">
+          <label for="nuevoColorTenant">Color principal:</label>
+          <input type="color" id="nuevoColorTenant" value="#4CAF50">
+        </div>
+      </div>
+      <button onclick="crearTenant()">Crear Cliente</button>
+    </div>
+
+    <div class="seccion">
+      <h3>🧑‍💼 Crear el Administrador de un Cliente</h3>
+      <p style="font-size:0.85rem; color:#7f8c8d; margin-top:-5px;">Cada cliente necesita al menos un usuario con rol "admin" para poder entrar a su propio panel.</p>
+      <div class="grid-parametros">
+        <div class="grupo-input">
+          <label for="tenantParaAdmin">Cliente:</label>
+          <select id="tenantParaAdmin"></select>
+        </div>
+        <div class="grupo-input">
+          <label for="correoNuevoAdmin">Correo:</label>
+          <input type="email" id="correoNuevoAdmin" placeholder="correo@ejemplo.com">
+        </div>
+        <div class="grupo-input">
+          <label for="nombreNuevoAdmin">Nombre:</label>
+          <input type="text" id="nombreNuevoAdmin" placeholder="Nombre completo">
+        </div>
+        <div class="grupo-input">
+          <label for="claveNuevoAdmin">Contraseña inicial:</label>
+          <input type="text" id="claveNuevoAdmin" placeholder="Mínimo 6 caracteres">
+        </div>
+      </div>
+      <button onclick="crearAdminDeTenant()">Crear Administrador</button>
+    </div>
+
+    <div class="seccion">
+      <h3>💳 Vender / Renovar un Plan</h3>
+      <div class="grid-parametros">
+        <div class="grupo-input">
+          <label for="tenantParaPlan">Cliente:</label>
+          <select id="tenantParaPlan"></select>
+        </div>
+        <div class="grupo-input">
+          <label for="planElegido">Plan:</label>
+          <select id="planElegido"></select>
+        </div>
+      </div>
+      <button onclick="venderPlanATenant()">Vender / Renovar Plan</button>
+      <p style="font-size:0.8rem; color:#7f8c8d; margin-top:10px;">Si el cliente ya tiene días vigentes, el nuevo plan se suma al final (no pierde lo que ya pagó).</p>
+    </div>
+
+    <div class="seccion">
+      <h3>📋 Todos tus Clientes</h3>
+      <div class="table-container">
+        <table id="tablaTenants">
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>URL</th>
+              <th>Estado Suscripción</th>
+              <th>Vence</th>
+              <th>Interruptor Manual</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody><tr><td colspan="6" style="text-align:center; color:#999;">Cargando...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    let TENANTS_CACHE = [];
+
+    window.addEventListener('load', async () => {
+      const acceso = await requerirSesion('super_admin');
+      if (!acceso) return;
+
+      await cargarTenants();
+      await cargarPlanes();
+    });
+
+    async function cargarTenants() {
+      try {
+        const { data: tenants, error } = await _supabase.from('tenants').select('*').order('nombre');
+        if (error) throw error;
+        TENANTS_CACHE = tenants || [];
+
+        // Llenar los selects de "crear admin" y "vender plan"
+        const opciones = TENANTS_CACHE.map(t => `<option value="${t.id}">${t.nombre}</option>`).join("");
+        document.getElementById("tenantParaAdmin").innerHTML = opciones;
+        document.getElementById("tenantParaPlan").innerHTML = opciones;
+
+        // Traer la suscripción vigente más reciente de cada tenant
+        const { data: suscripciones } = await _supabase
+          .from('suscripciones')
+          .select('tenant_id, fecha_fin')
+          .order('fecha_fin', { ascending: false });
+
+        const vencimientoPorTenant = {};
+        (suscripciones || []).forEach(s => {
+          if (!vencimientoPorTenant[s.tenant_id]) vencimientoPorTenant[s.tenant_id] = s.fecha_fin;
+        });
+
+        const tbody = document.querySelector("#tablaTenants tbody");
+        tbody.innerHTML = "";
+
+        if (TENANTS_CACHE.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#999;">Aún no tienes clientes creados</td></tr>`;
+          return;
+        }
+
+        TENANTS_CACHE.forEach(t => {
+          const vence = vencimientoPorTenant[t.id];
+          const vigente = vence && new Date(vence) >= new Date();
+          let estadoTexto, estadoClase;
+
+          if (!t.activo) { estadoTexto = "Suspendido manualmente"; estadoClase = "estado-suspendido"; }
+          else if (vigente) { estadoTexto = "Vigente"; estadoClase = "estado-vigente"; }
+          else { estadoTexto = "Vencido"; estadoClase = "estado-vencido"; }
+
+          tbody.innerHTML += `
+            <tr>
+              <td>${t.nombre}</td>
+              <td>/tubingo/${t.slug}</td>
+              <td class="${estadoClase}">${estadoTexto}</td>
+              <td>${vence ? new Date(vence).toLocaleDateString('es-EC') : '—'}</td>
+              <td>
+                <button class="btn-accion ${t.activo ? 'btn-borrar-item' : 'btn-modificar'}" onclick="alternarActivoTenant('${t.id}', ${t.activo})">
+                  ${t.activo ? 'Suspender' : 'Reactivar'}
+                </button>
+              </td>
+              <td>
+                <button class="btn-accion btn-azul" onclick="verAdminsDeTenant('${t.id}', '${t.nombre}')">Ver Admins</button>
+              </td>
+            </tr>`;
+        });
+      } catch (err) {
+        alert("❌ Error cargando clientes: " + err.message);
+      }
+    }
+
+    async function cargarPlanes() {
+      const { data: planes } = await _supabase.from('planes').select('*').order('duracion_dias');
+      document.getElementById("planElegido").innerHTML =
+        (planes || []).map(p => `<option value="${p.id}">${p.nombre}</option>`).join("");
+    }
+
+    async function crearTenant() {
+      const slug = document.getElementById("nuevoSlug").value.trim().toLowerCase().replace(/\s+/g, '-');
+      const nombre = document.getElementById("nuevoNombreTenant").value.trim();
+      const logo_url = document.getElementById("nuevoLogoTenant").value.trim() || null;
+      const color_principal = document.getElementById("nuevoColorTenant").value;
+
+      if (!slug || !nombre) { alert("Slug y nombre son obligatorios."); return; }
+
+      document.getElementById("mainPanel").classList.add("loading");
+      try {
+        const { data, error } = await _supabase.from('tenants').insert({ slug, nombre, logo_url, color_principal }).select().single();
+        if (error) throw error;
+
+        // Crea también la fila de configuración inicial para ese tenant
+        await _supabase.from('configuracion').insert({ tenant_id: data.id, limite_cartones: 5, caracteres_qr: 6, fecha_cierre: new Date(Date.now() + 30*24*60*60*1000).toISOString() });
+
+        alert(`✅ Cliente "${nombre}" creado. URL: /tubingo/${slug}`);
+        document.getElementById("nuevoSlug").value = "";
+        document.getElementById("nuevoNombreTenant").value = "";
+        document.getElementById("nuevoLogoTenant").value = "";
+        await cargarTenants();
+      } catch (err) {
+        alert("❌ Error: " + err.message);
+      } finally {
+        document.getElementById("mainPanel").classList.remove("loading");
+      }
+    }
+
+    async function crearAdminDeTenant() {
+      const tenant_id = document.getElementById("tenantParaAdmin").value;
+      const correo = document.getElementById("correoNuevoAdmin").value.trim();
+      const nombre = document.getElementById("nombreNuevoAdmin").value.trim();
+      const clave = document.getElementById("claveNuevoAdmin").value;
+
+      if (!tenant_id || !correo || !clave) { alert("Completa todos los campos."); return; }
+      if (clave.length < 6) { alert("La contraseña debe tener al menos 6 caracteres."); return; }
+
+      document.getElementById("mainPanel").classList.add("loading");
+      try {
+        const resultado = await llamarFuncionAdmin("crear_usuario", { correo, clave, nombre, rol: "admin", tenant_id });
+        if (resultado.error) { alert("❌ " + resultado.error); return; }
+        alert(`✅ Administrador creado.\n\nCorreo: ${correo}\nContraseña: ${clave}\n\nCompártelas con el cliente.`);
+        document.getElementById("correoNuevoAdmin").value = "";
+        document.getElementById("nombreNuevoAdmin").value = "";
+        document.getElementById("claveNuevoAdmin").value = "";
+      } catch (err) {
+        alert("❌ Error: " + err.message);
+      } finally {
+        document.getElementById("mainPanel").classList.remove("loading");
+      }
+    }
+
+    async function venderPlanATenant() {
+      const tenant_id = document.getElementById("tenantParaPlan").value;
+      const plan_id = document.getElementById("planElegido").value;
+      if (!tenant_id || !plan_id) { alert("Elige cliente y plan."); return; }
+
+      document.getElementById("mainPanel").classList.add("loading");
+      try {
+        const { error } = await _supabase.rpc('vender_plan', { p_tenant_id: tenant_id, p_plan_id: plan_id });
+        if (error) throw error;
+        alert("✅ Plan aplicado correctamente.");
+        await cargarTenants();
+      } catch (err) {
+        alert("❌ Error: " + err.message);
+      } finally {
+        document.getElementById("mainPanel").classList.remove("loading");
+      }
+    }
+
+    async function alternarActivoTenant(tenantId, estabaActivo) {
+      const accion = estabaActivo ? "suspender" : "reactivar";
+      if (!confirm(`¿Seguro que deseas ${accion} este cliente? Esto bloquea/desbloquea todo su sistema de inmediato.`)) return;
+
+      try {
+        const { error } = await _supabase.from('tenants').update({ activo: !estabaActivo }).eq('id', tenantId);
+        if (error) throw error;
+        await cargarTenants();
+      } catch (err) {
+        alert("❌ Error: " + err.message);
+      }
+    }
+
+    async function verAdminsDeTenant(tenantId, nombreTenant) {
+      const { data, error } = await _supabase
+        .from('perfiles')
+        .select('id, correo, nombre, rol, activo')
+        .eq('tenant_id', tenantId);
+
+      if (error) { alert("❌ " + error.message); return; }
+
+      if (!data || data.length === 0) {
+        alert(`"${nombreTenant}" todavía no tiene ningún usuario creado.`);
+        return;
+      }
+
+      let listado = data.map(u => `• ${u.correo} — ${u.rol}${u.activo === false ? ' (SUSPENDIDO)' : ''}`).join("\n");
+      const accion = prompt(
+        `Usuarios de "${nombreTenant}":\n\n${listado}\n\nEscribe el correo de un usuario para RESETEAR su contraseña, o deja vacío para cerrar:`
+      );
+
+      if (!accion) return;
+      const usuario = data.find(u => u.correo === accion.trim());
+      if (!usuario) { alert("No encontré ese correo en la lista."); return; }
+
+      const claveNueva = prompt(`Nueva contraseña temporal para ${usuario.correo}:`);
+      if (!claveNueva || claveNueva.length < 6) { alert("Contraseña inválida (mínimo 6 caracteres)."); return; }
+
+      const resultado = await llamarFuncionAdmin("resetear_clave", { userId: usuario.id, claveNueva });
+      if (resultado.error) { alert("❌ " + resultado.error); return; }
+      alert(`✅ Contraseña de ${usuario.correo} actualizada a: ${claveNueva}`);
+    }
+
+    async function llamarFuncionAdmin(accion, datosExtra) {
+      const { data: { session } } = await _supabase.auth.getSession();
+      const respuesta = await fetch(`${SUPABASE_URL}/functions/v1/admin-usuarios`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
+        body: JSON.stringify({ accion, ...datosExtra })
+      });
+      return await respuesta.json();
+    }
+  </script>
+</body>
+</html>
