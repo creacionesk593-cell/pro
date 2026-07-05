@@ -1,3 +1,0 @@
-const SUPABASE_URL = "https://vhgomlizaeysshzscbhu.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoZ29tbGl6YWV5c3NoenNjYmh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyNTA2MzEsImV4cCI6MjA5ODgyNjYzMX0._FMKA5AyyJxK0YoVcVxIsttE3hI_qmnVSEeruMiFMfo";
-const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
