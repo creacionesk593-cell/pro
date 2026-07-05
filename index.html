@@ -39,10 +39,27 @@
 
     window.addEventListener('load', async () => {
       await cargarBrandingDelTenant();
+      mostrarErrorDeEnlaceSiExiste();
 
       const { data: { session } } = await _supabase.auth.getSession();
       if (session) await redirigirSegunRol(session.user.id);
     });
+
+    function mostrarErrorDeEnlaceSiExiste() {
+      if (window.location.hash.includes("error=")) {
+        const params = new URLSearchParams(window.location.hash.substring(1));
+        const codigo = params.get("error_code");
+        const msg = document.getElementById("mensajeError");
+
+        if (codigo === "otp_expired") {
+          msg.innerText = "El enlace de recuperación ya venció. Pide uno nuevo con '¿Olvidaste tu contraseña?' y ábrelo apenas te llegue.";
+        } else {
+          msg.innerText = "Ese enlace ya no es válido. Pide uno nuevo con '¿Olvidaste tu contraseña?'.";
+        }
+        // Limpia la URL para que no se quede el error ahí si recarga
+        history.replaceState(null, "", window.location.pathname + window.location.search);
+      }
+    }
 
     // Lee ?tenant=slug de la URL y carga su logo/nombre/color (si existe)
     async function cargarBrandingDelTenant() {
