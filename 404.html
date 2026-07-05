@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Redirigiendo...</title>
+  <script>
+    // GitHub Pages muestra este archivo cuando la URL no existe como carpeta real,
+    // por ejemplo: /tubingo/triunfobingo
+    // Aquí tomamos ese último pedazo de la URL (el "slug" del cliente) y
+    // redirigimos a login.html pasándoselo como parámetro, SIN perder la ruta.
+    (function () {
+      const base = "/pro/";
+      let ruta = window.location.pathname.replace(base, "");
+      ruta = ruta.replace(/\/$/, ""); // quita "/" final si viene
+
+      if (ruta && !ruta.includes(".")) {
+        window.location.replace(base + "index.html?tenant=" + encodeURIComponent(ruta));
+      } else {
+        // Si no se reconoce nada, manda al login genérico
+        window.location.replace(base + "index.html");
+      }
+    })();
+  </script>
+</head>
+<body>
+  <p style="font-family:sans-serif; text-align:center; margin-top:40px;">Redirigiendo...</p>
+</body>
+</html>
