@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Iniciar Sesión - TuBingo Pro</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #f1f2f6; color: #2d3436; }
+    .caja { background: white; padding: 35px 30px; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); width: 100%; max-width: 380px; box-sizing: border-box; text-align:center; }
+    .caja img { max-height: 70px; max-width: 200px; object-fit: contain; margin-bottom: 10px; display:none; }
+    .caja h1 { margin: 0 0 5px; font-size: 1.4rem; color: #2c3e50; }
+    .caja p.subt { margin: 0 0 20px; font-size: 0.85rem; color: #7f8c8d; }
+    input { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; box-sizing: border-box; }
+    button { width: 100%; padding: 13px; margin-top: 12px; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
+    button:disabled { background: #ccc !important; cursor: not-allowed; }
+    #mensajeError { color: #d63031; font-size: 0.85rem; text-align: center; margin-top: 12px; min-height: 1em; }
+    #mensajeRecuperacion { color: #27ae60; font-size: 0.85rem; text-align: center; margin-top: 8px; min-height: 1em; }
+  </style>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="conexion.js"></script>
+</head>
+<body>
+  <div class="caja">
+    <img id="logoTenant" src="" alt="Logo">
+    <h1 id="nombreTenant">TuBingo Pro</h1>
+    <p class="subt">Ingresa con tu cuenta para continuar</p>
+    <input type="email" id="correo" placeholder="Correo electrónico" autocomplete="username">
+    <input type="password" id="clave" placeholder="Contraseña" autocomplete="current-password">
+    <button id="btnEntrar" style="background:#4CAF50;" onclick="iniciarSesion()">Ingresar</button>
+    <div id="mensajeError"></div>
+    <p style="text-align:center; margin-top:14px;">
+      <a href="#" onclick="solicitarRecuperacion(); return false;" style="color:#4CAF50; font-size:0.85rem; text-decoration:none;">¿Olvidaste tu contraseña?</a>
+    </p>
+    <div id="mensajeRecuperacion"></div>
+  </div>
+
+  <script>
+    let colorTenantActual = "#4CAF50";
+
+    window.addEventListener('load', async () => {
+      await cargarBrandingDelTenant();
+
+      const { data: { session } } = await _supabase.auth.getSession();
+      if (session) await redirigirSegunRol(session.user.id);
+    });
+
+    // Lee ?tenant=slug de la URL y carga su logo/nombre/color (si existe)
+    async function cargarBrandingDelTenant() {
+      const params = new URLSearchParams(window.location.search);
+      const slug = params.get("tenant");
+      if (!slug) return;
+
+      const { data: tenant } = await _supabase
+        .from('tenants')
+        .select('nombre, logo_url, color_principal')
+        .eq('slug', slug)
+        .maybeSingle();
+
+      if (tenant) {
+        document.getElementById("nombreTenant").innerText = tenant.nombre;
+        if (tenant.logo_url) {
+          const img = document.getElementById("logoTenant");
+          img.src = tenant.logo_url;
+          img.style.display = "inline-block";
+        }
+        if (tenant.color_principal) {
+          colorTenantActual = tenant.color_principal;
+          document.getElementById("btnEntrar").style.background = tenant.color_principal;
+        }
+      }
+    }
+
+    async function redirigirSegunRol(userId) {
+      const { data: perfil } = await _supabase.from('perfiles').select('rol, activo').eq('id', userId).single();
+      if (!perfil || perfil.activo === false) return;
+      if (perfil.rol === 'super_admin') window.location.href = "superadmin.html";
+      else if (perfil.rol === 'admin') window.location.href = "admin.html";
+      else window.location.href = "registro.html";
+    }
+
+    document.getElementById("clave").addEventListener("keydown", (e) => { if (e.key === "Enter") iniciarSesion(); });
+
+    async function iniciarSesion() {
+      const correo = document.getElementById("correo").value.trim();
+      const clave = document.getElementById("clave").value;
+      const btn = document.getElementById("btnEntrar");
+      const msg = document.getElementById("mensajeError");
+      msg.innerText = "";
+
+      if (!correo || !clave) { msg.innerText = "Completa correo y contraseña."; return; }
+
+      btn.disabled = true;
+      btn.innerText = "Verificando...";
+
+      const { data, error } = await _supabase.auth.signInWithPassword({ email: correo, password: clave });
+
+      if (error) {
+        msg.innerText = "Correo o contraseña incorrectos.";
+        btn.disabled = false;
+        btn.innerText = "Ingresar";
+        return;
+      }
+
+      await redirigirSegunRol(data.user.id);
+    }
+
+    async function solicitarRecuperacion() {
+      const correo = document.getElementById("correo").value.trim();
+      const msgError = document.getElementById("mensajeError");
+      const msgOk = document.getElementById("mensajeRecuperacion");
+      msgError.innerText = ""; msgOk.innerText = "";
+
+      if (!correo) { msgError.innerText = "Escribe tu correo arriba y luego presiona el enlace."; return; }
+
+      await _supabase.auth.resetPasswordForEmail(correo, {
+        redirectTo: window.location.origin + window.location.pathname.replace("index.html", "") + "actualizar-clave.html"
+      });
+
+      msgOk.innerText = "Si el correo está registrado, te enviamos un enlace para recuperar tu acceso. Revisa tu bandeja de entrada (y spam).";
+    }
+  </script>
+</body>
+</html>
