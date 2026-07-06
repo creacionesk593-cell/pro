@@ -312,6 +312,7 @@
 
       document.getElementById("vistaDashboard").style.display = "block";
       window.MI_TENANT_ID = acceso.perfil.tenant_id;
+      window.MI_TENANT_NOMBRE = (acceso.tenant && acceso.tenant.nombre) ? acceso.tenant.nombre : "TuBingo Pro";
 
       document.getElementById("correoAdminActivo").innerText = acceso.session.user.email;
       mostrarEstadoDelTenant(acceso);
@@ -531,10 +532,29 @@
 
     async function descargarBaseDatosExcel() {
       try {
-        const { data } = await _supabase.from('registros_bingo').select('carton, nombre, ciudad, correo, telefono, vendedor').order('id', { ascending: true });
+        const { data } = await _supabase.from('registros_bingo').select('carton, nombre, ciudad, correo, telefono, vendedor, vendedor_id').order('id', { ascending: true });
         if (!data || data.length === 0) return alert("No hay datos.");
-        
-        const filasProcesadas = data.map(row => ({ "CARTON": row.carton, "NOMBRES": row.nombre, "UNO_PARTICIPA": 1, "CIUDAD": row.ciudad, "CORREO": row.correo, "TELEFONO": row.telefono, "VENDEDOR": row.vendedor || "" }));
+
+        // Averiguamos qué vendedores están suspendidos, para invalidar sus cartones (UNO_PARTICIPA = 0)
+        const idsVendedores = [...new Set(data.map(r => r.vendedor_id).filter(Boolean))];
+        let vendedoresSuspendidos = new Set();
+        if (idsVendedores.length > 0) {
+          const { data: perfilesVendedores } = await _supabase
+            .from('perfiles')
+            .select('id, activo')
+            .in('id', idsVendedores);
+          (perfilesVendedores || []).forEach(p => { if (p.activo === false) vendedoresSuspendidos.add(p.id); });
+        }
+
+        const filasProcesadas = data.map(row => ({
+          "CARTON": row.carton,
+          "NOMBRES": row.nombre,
+          "UNO_PARTICIPA": (row.vendedor_id && vendedoresSuspendidos.has(row.vendedor_id)) ? 0 : 1,
+          "CIUDAD": row.ciudad,
+          "CORREO": row.correo,
+          "TELEFONO": row.telefono,
+          "VENDEDOR": row.vendedor || ""
+        }));
         const libroTrabajo = XLSX.utils.book_new();
         const hojaTrabajo = XLSX.utils.json_to_sheet(filasProcesadas);
         XLSX.utils.book_append_sheet(libroTrabajo, hojaTrabajo, "CARTONES");
@@ -581,18 +601,18 @@
         const doc = new jsPDF();
 
         doc.setFontSize(16);
-        doc.text("Informe de Ventas - TuBingo Pro", 14, 18);
-        doc.setFontSize(9);
-        doc.setTextColor(120);
-        doc.text(`Generado: ${new Date().toLocaleString('es-EC')}`, 14, 24);
+        doc.text(`Informe de Ventas - ${window.MI_TENANT_NOMBRE || "TuBingo Pro"}`, 14, 18);
+        doc.setFontSize(12);
+        doc.setTextColor(90);
+        doc.text(`Generado: ${new Date().toLocaleString('es-EC')}`, 14, 27);
         doc.setTextColor(0);
         doc.setFontSize(12);
-        doc.text(`Total de cartones registrados: ${totalCartones}`, 14, 34);
+        doc.text(`Total de cartones registrados: ${totalCartones}`, 14, 37);
 
         doc.setFontSize(11);
-        doc.text("Ranking de Vendedores (Top 20)", 14, 44);
+        doc.text("Ranking de Vendedores (Top 20)", 14, 47);
         doc.autoTable({
-          startY: 48,
+          startY: 51,
           head: [["#", "Vendedor", "Cartones Registrados"]],
           body: rankingVendedores.map((v, i) => [i + 1, v[0], v[1]]),
           theme: 'grid',
@@ -612,7 +632,8 @@
           styles: { fontSize: 9 }
         });
 
-        doc.save(`informe_tubingo_${Date.now()}.pdf`);
+        const nombreArchivo = (window.MI_TENANT_NOMBRE || "tubingo").toLowerCase().replace(/[^a-z0-9]+/g, '_');
+        doc.save(`informe_${nombreArchivo}_${Date.now()}.pdf`);
       } catch (err) {
         alert("❌ Error generando el informe: " + err.message);
       }
