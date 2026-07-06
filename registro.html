@@ -78,6 +78,12 @@
     
     .alerta-duplicado { color: #d63031; font-weight: bold; font-size: 12px; display: block; margin-top: 4px; }
     .fila-duplicada { background-color: #ffeaa7; } 
+    @media (max-width: 640px) {
+      header#headerRegistro h2 { position: static !important; transform: none !important; order: -2; margin: 4px 0; text-align: center; }
+      header#headerRegistro #logoDinamico { order: -1; }
+      header#headerRegistro #barraUsuario { position: static !important; transform: none !important; order: 0; flex-direction: column; align-items: center; text-align: center; margin: 4px 0; }
+      header#headerRegistro button[onclick="cerrarSesion()"] { position: static !important; transform: none !important; order: 1; margin-top: 6px; }
+    }
   </style>
   
   <style id="estilosDinamicosMarca"></style>
@@ -106,10 +112,23 @@
     <div id="bannerCuentaRegresiva" class="banner-cuenta-regresiva">⏳ ¡APÚRATE! EL REGISTRO CIERRA EN:<span id="tiempoRestante">00:00</span></div>
 
     <div class="formulario" style="margin-top:0;">
-      <h3>Escanear Código QR</h3>
-      <label><input type="checkbox" id="leerTodos" checked> Permitir múltiples cartones</label>
-      <div id="reader"></div>
-      <div id="resultadoQR">Esperando acción o escaneo...</div>
+      <div id="bloqueQR">
+        <h3>Escanear Código QR</h3>
+        <label><input type="checkbox" id="leerTodos" checked> Permitir múltiples cartones</label>
+        <div id="reader"></div>
+        <div id="resultadoQR">Esperando acción o escaneo...</div>
+      </div>
+
+      <div id="bloqueManual" style="display:none;">
+        <h3>Ingresar Números de Serie Manualmente</h3>
+        <p style="font-size:0.85rem; color:#7f8c8d;">
+          Escribe los números separados por coma. Para una secuencia seguida, usa un guion.<br>
+          Ejemplo: <code>00562, 00745, 00852 - 00860, 00864</code>
+        </p>
+        <textarea id="inputSeriesManual" rows="3" style="width:100%; padding:10px; border:1px solid #ccc; border-radius:6px; font-size:15px; box-sizing:border-box; font-family:inherit;" placeholder="Ej: 00562, 00745, 00852 - 00860, 00864"></textarea>
+        <button type="button" id="btnAgregarSeries" onclick="agregarSeriesManuales()" style="margin-top:10px;">➕ Agregar Series a la Lista</button>
+      </div>
+
       <div id="contador">Cartones en lista: 0</div>
     </div>
 
@@ -162,6 +181,71 @@
     let intervaloRegresivo = null;
     let scanner = null;
 
+    /* =========================================================================
+       INGRESO MANUAL DE NÚMEROS DE SERIE (sin QR)
+       Acepta: "00562, 00745, 00852 - 00860, 00864"
+       Un guion entre dos números = secuencia completa entre ambos.
+       ========================================================================= */
+    function expandirSeriesManual(texto) {
+      const resultado = [];
+      const partes = texto.split(",");
+
+      for (let parte of partes) {
+        parte = parte.trim();
+        if (!parte) continue;
+
+        if (parte.includes("-")) {
+          const [ini, fin] = parte.split("-").map(s => s.trim());
+          if (!ini || !fin) continue;
+
+          const largo = Math.max(ini.length, fin.length);
+          const numIni = parseInt(ini, 10);
+          const numFin = parseInt(fin, 10);
+          if (isNaN(numIni) || isNaN(numFin)) continue;
+
+          const desde = Math.min(numIni, numFin);
+          const hasta = Math.max(numIni, numFin);
+
+          for (let n = desde; n <= hasta; n++) {
+            resultado.push(String(n).padStart(largo, '0'));
+          }
+        } else {
+          resultado.push(parte);
+        }
+      }
+      return resultado;
+    }
+
+    function agregarSeriesManuales() {
+      if (CONFIG_SISTEMA.fecha_cierre && (new Date().getTime() >= CONFIG_SISTEMA.fecha_cierre.getTime())) {
+        bloquearSistemaPorFecha();
+        return;
+      }
+
+      const texto = document.getElementById("inputSeriesManual").value;
+      if (!texto.trim()) { alert("Escribe al menos un número de serie."); return; }
+
+      const codigos = expandirSeriesManual(texto);
+      if (codigos.length === 0) { alert("No se reconoció ningún número de serie válido."); return; }
+
+      let agregados = 0, duplicados = 0;
+      codigos.forEach(codigo => {
+        if (!listaQR.includes(codigo)) {
+          listaQR.push(codigo);
+          agregados++;
+        } else {
+          duplicados++;
+        }
+      });
+
+      actualizarTabla();
+      document.getElementById("inputSeriesManual").value = "";
+
+      let mensaje = `✅ Se agregaron ${agregados} cartón(es) a la lista.`;
+      if (duplicados > 0) mensaje += ` (${duplicados} ya estaban en la lista y se omitieron)`;
+      alert(mensaje);
+    }
+
     function emitirSonidoExito() {
       try {
         let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -212,6 +296,15 @@
             CONFIG_SISTEMA.caracteres_qr = configGeneral.caracteres_qr;
             CONFIG_SISTEMA.fecha_cierre = new Date(configGeneral.fecha_cierre);
             iniciarMonitoreoTiempo();
+
+            if (configGeneral.permitir_manual) {
+              document.getElementById("bloqueQR").style.display = "none";
+              document.getElementById("bloqueManual").style.display = "block";
+            } else {
+              document.getElementById("bloqueQR").style.display = "block";
+              document.getElementById("bloqueManual").style.display = "none";
+              iniciarScannerQR();
+            }
           }
 
           // MEJORA OWASP: Ahora solo descargamos los valores que la política RLS permite explícitamente (diseño)
@@ -347,8 +440,11 @@
       }
     }
 
-    scanner = new Html5QrcodeScanner("reader", { fps: 15, qrbox: 250, rememberLastUsedCamera: true });
-    scanner.render(onScanSuccess, (err) => {});
+    function iniciarScannerQR() {
+      if (scanner) return; // no lo inicialices dos veces
+      scanner = new Html5QrcodeScanner("reader", { fps: 15, qrbox: 250, rememberLastUsedCamera: true });
+      scanner.render(onScanSuccess, (err) => {});
+    }
 
     function actualizarTabla() {
       let tbody = document.querySelector("#tabla tbody");
