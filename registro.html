@@ -92,6 +92,7 @@
     <div id="barraUsuario" style="position:absolute; left:15px; top:15px; text-align:left; font-size:0.8rem; line-height:1.3; opacity:0.95;">
       <div id="nombreUsuarioActivo" style="font-weight:bold;"></div>
       <div id="correoUsuarioActivo"></div>
+      <div id="totalVendidosUsuario" style="margin-top:4px; font-weight:bold;"></div>
     </div>
     <img id="logoDinamico" class="header-logo" src="" alt="Bingo Logo">
     <h2 id="tituloHeader">Registro de Cartones - TuBingo Pro</h2>
@@ -112,7 +113,11 @@
 
     <div class="formulario">
       <h3>Datos personales</h3>
-      <input type="text" id="nombre" placeholder="Nombre Completo" required>
+      <input type="text" id="dni" placeholder="Cédula / DNI" style="border:2px solid #3498db;">
+      <div style="position:relative;">
+        <input type="text" id="nombre" placeholder="Nombre Completo" required autocomplete="off">
+        <div id="listaSugerencias" style="display:none; position:absolute; z-index:50; background:white; border:1px solid #ccc; border-radius:6px; width:100%; max-height:180px; overflow-y:auto; box-shadow:0 4px 10px rgba(0,0,0,0.1);"></div>
+      </div>
       <input type="text" id="celular" placeholder="Número de Celular" required>
       <input type="text" id="correo" placeholder="Correo Electrónico" required>
       <input type="text" id="ciudad" placeholder="Ciudad (Ej: Guayaquil)" required>
@@ -180,6 +185,10 @@
       document.getElementById("vendedor").value = nombreUsuario;
 
       window.MI_TENANT_ID = acceso.perfil.tenant_id;
+      window.MI_USER_ID = acceso.session.user.id;
+
+      cargarTotalVendido();
+      restaurarCodigoCanalGuardado();
 
       if (!acceso.habilitado) {
         bloquearPorSuscripcionVencida(["btnRegistrar"]);
@@ -461,10 +470,11 @@
         }
 
         let ubicacionCompleta = `${ciudad} - ${direccion}`;
+        let dniCliente = document.getElementById("dni").value.trim();
         let filasAInsertar = listaQR.map(serie => ({
           tenant_id: window.MI_TENANT_ID,
-          carton: serie, nombre: nombre, correo: correo, telefono: celular,
-          ciudad: ubicacionCompleta, vendedor: vendedor, ip_publica: ipPublica,
+          carton: serie, nombre: nombre, dni: dniCliente, correo: correo, telefono: celular,
+          ciudad: ubicacionCompleta, vendedor: vendedor, vendedor_id: window.MI_USER_ID, ip_publica: ipPublica,
           gps_latitud: geoLatitud ? geoLatitud.toString() : "", gps_longitud: geoLongitud ? geoLongitud.toString() : ""
         }));
 
@@ -474,17 +484,132 @@
         alert("¡Todos tus cartones han sido registrados exitosamente!");
         listaQR = [];
         actualizarTabla();
+        document.getElementById("dni").value = "";
         document.getElementById("nombre").value = "";
         document.getElementById("celular").value = "";
         document.getElementById("correo").value = "";
         document.getElementById("ciudad").value = "";
         document.getElementById("direccion").value = "";
         document.getElementById("vendedor").value = document.getElementById("nombreUsuarioActivo").innerText;
-        document.getElementById("codigoCanal").value = "";
+        // El código de WhatsApp NO se borra: se guarda para no tener que escribirlo de nuevo
+        try { localStorage.setItem('tubingo_codigo_canal_' + window.MI_TENANT_ID, document.getElementById("codigoCanal").value); } catch(e) {}
+
+        cargarTotalVendido();
 
       } catch (err) { alert("Error: " + err.message); } 
       finally { mainEl.classList.remove("loading"); btn.innerText = "Registrar Cartones en el Sistema"; }
     }
+
+    /* =========================================================================
+       TOTAL DE CARTONES VENDIDOS POR ESTE VENDEDOR
+       ========================================================================= */
+    async function cargarTotalVendido() {
+      try {
+        const { count, error } = await _supabase
+          .from('registros_bingo')
+          .select('id', { count: 'exact', head: true })
+          .eq('tenant_id', window.MI_TENANT_ID)
+          .eq('vendedor_id', window.MI_USER_ID);
+
+        if (error) throw error;
+        document.getElementById("totalVendidosUsuario").innerText = `🎟️ Cartones vendidos: ${count || 0}`;
+      } catch (err) {
+        console.error("Error cargando total vendido:", err.message);
+      }
+    }
+
+    /* =========================================================================
+       RECORDAR EL CÓDIGO DE CANAL (no hay que escribirlo cada vez)
+       ========================================================================= */
+    function restaurarCodigoCanalGuardado() {
+      try {
+        const guardado = localStorage.getItem('tubingo_codigo_canal_' + window.MI_TENANT_ID);
+        if (guardado) document.getElementById("codigoCanal").value = guardado;
+      } catch (e) {}
+    }
+
+    /* =========================================================================
+       AUTOCOMPLETADO: buscar cliente ya registrado por DNI o por nombre
+       ========================================================================= */
+    let temporizadorBusqueda = null;
+
+    document.getElementById("dni").addEventListener("blur", async () => {
+      const dni = document.getElementById("dni").value.trim();
+      if (!dni) return;
+      const { data } = await _supabase
+        .from('registros_bingo')
+        .select('nombre, dni, correo, telefono, ciudad')
+        .eq('tenant_id', window.MI_TENANT_ID)
+        .eq('dni', dni)
+        .order('creado_en', { ascending: false })
+        .limit(1);
+
+      if (data && data.length > 0) rellenarDatosCliente(data[0]);
+    });
+
+    document.getElementById("nombre").addEventListener("input", () => {
+      clearTimeout(temporizadorBusqueda);
+      const texto = document.getElementById("nombre").value.trim();
+      const caja = document.getElementById("listaSugerencias");
+
+      if (texto.length < 3) { caja.style.display = "none"; return; }
+
+      temporizadorBusqueda = setTimeout(async () => {
+        const { data } = await _supabase
+          .from('registros_bingo')
+          .select('nombre, dni, correo, telefono, ciudad')
+          .eq('tenant_id', window.MI_TENANT_ID)
+          .ilike('nombre', `%${texto}%`)
+          .order('creado_en', { ascending: false })
+          .limit(5);
+
+        if (!data || data.length === 0) { caja.style.display = "none"; return; }
+
+        // Quita duplicados por nombre+dni para no repetir la misma persona varias veces
+        const vistos = new Set();
+        const unicos = data.filter(c => {
+          const clave = c.nombre + '|' + (c.dni || '');
+          if (vistos.has(clave)) return false;
+          vistos.add(clave);
+          return true;
+        });
+
+        caja.innerHTML = unicos.map((c, i) =>
+          `<div style="padding:10px; cursor:pointer; border-bottom:1px solid #eee;" onmousedown="seleccionarSugerencia(${i})">
+            <strong>${c.nombre}</strong>${c.dni ? ' — DNI: ' + c.dni : ''}
+          </div>`
+        ).join("");
+        window._sugerenciasActuales = unicos;
+        caja.style.display = "block";
+      }, 350);
+    });
+
+    function seleccionarSugerencia(indice) {
+      const cliente = window._sugerenciasActuales[indice];
+      rellenarDatosCliente(cliente);
+      document.getElementById("listaSugerencias").style.display = "none";
+    }
+
+    function rellenarDatosCliente(cliente) {
+      document.getElementById("nombre").value = cliente.nombre || "";
+      document.getElementById("dni").value = cliente.dni || "";
+      document.getElementById("correo").value = cliente.correo || "";
+      document.getElementById("celular").value = cliente.telefono || "";
+
+      // "ciudad" se guarda como "Ciudad - Dirección"; lo separamos de vuelta
+      if (cliente.ciudad && cliente.ciudad.includes(" - ")) {
+        const partes = cliente.ciudad.split(" - ");
+        document.getElementById("ciudad").value = partes[0];
+        document.getElementById("direccion").value = partes.slice(1).join(" - ");
+      } else {
+        document.getElementById("ciudad").value = cliente.ciudad || "";
+      }
+    }
+
+    // Oculta la lista de sugerencias si se hace click afuera
+    document.addEventListener("click", (e) => {
+      if (e.target.id !== "nombre") document.getElementById("listaSugerencias").style.display = "none";
+    });
   </script>
 </body>
 </html>
