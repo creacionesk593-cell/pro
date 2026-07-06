@@ -8,7 +8,7 @@
     body { font-family: 'Segoe UI', sans-serif; margin: 0; padding: 0; background: #f9f9f9; color: #333; }
     
     /* Cabecera dinámica controlada por marca */
-    header { background: #4CAF50; color: white; padding: 15px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    header { background: #4CAF50; color: white; padding: 20px 15px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); display: flex; flex-direction: column; align-items: center; gap: 10px; position: relative; min-height: 90px; justify-content: center; }
     .header-logo { max-height: 80px; max-width: 180px; object-fit: contain; display: none; } 
     header h2 { margin: 0; }
 
@@ -89,7 +89,7 @@
 </head>
 <body>
   <header id="headerRegistro" style="position:relative;">
-    <div id="barraUsuario" style="position:absolute; left:15px; top:15px; text-align:left; font-size:0.8rem; line-height:1.3; opacity:0.95;">
+    <div id="barraUsuario" style="position:absolute; left:15px; top:15px; text-align:left; font-size:0.75rem; line-height:1.4; opacity:0.95; max-width:40%; overflow-wrap:break-word;">
       <div id="nombreUsuarioActivo" style="font-weight:bold;"></div>
       <div id="correoUsuarioActivo"></div>
       <div id="totalVendidosUsuario" style="margin-top:4px; font-weight:bold;"></div>
