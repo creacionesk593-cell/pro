@@ -88,11 +88,18 @@
     }
 
     async function redirigirSegunRol(userId) {
-      const { data: perfil } = await _supabase.from('perfiles').select('rol, activo').eq('id', userId).single();
+      const { data: perfil } = await _supabase.from('perfiles').select('rol, activo, tenant_id').eq('id', userId).single();
       if (!perfil || perfil.activo === false) return;
-      if (perfil.rol === 'super_admin') window.location.href = "superadmin.html";
-      else if (perfil.rol === 'admin') window.location.href = "admin.html";
-      else window.location.href = "registro.html";
+
+      if (perfil.rol === 'super_admin') { window.location.href = "superadmin.html"; return; }
+
+      let slug = null;
+      if (perfil.tenant_id) {
+        const { data: tenant } = await _supabase.from('tenants').select('slug').eq('id', perfil.tenant_id).single();
+        slug = tenant ? tenant.slug : null;
+      }
+      const destino = perfil.rol === 'admin' ? "admin.html" : "registro.html";
+      window.location.href = slug ? `${destino}?tenant=${encodeURIComponent(slug)}` : destino;
     }
 
     document.getElementById("clave").addEventListener("keydown", (e) => { if (e.key === "Enter") iniciarSesion(); });
