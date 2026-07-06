@@ -110,12 +110,16 @@
           <label for="nuevoPlanDias">Duración (días):</label>
           <input type="number" id="nuevoPlanDias" min="1" placeholder="ej: 15">
         </div>
+        <div class="grupo-input">
+          <label for="nuevoPlanPrecio">Precio de venta ($):</label>
+          <input type="number" id="nuevoPlanPrecio" min="0" step="0.01" placeholder="ej: 25.00">
+        </div>
       </div>
       <button onclick="crearPlan()">Crear Plan</button>
 
       <div class="table-container" style="margin-top:20px;">
         <table id="tablaPlanes">
-          <thead><tr><th>Nombre</th><th>Duración</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>Nombre</th><th>Duración</th><th>Precio</th><th>Acciones</th></tr></thead>
           <tbody><tr><td colspan="3" style="text-align:center; color:#999;">Cargando...</td></tr></tbody>
         </table>
       </div>
@@ -235,13 +239,13 @@
       if (error) { console.error(error.message); return; }
 
       document.getElementById("planElegido").innerHTML =
-        (planes || []).map(p => `<option value="${p.id}">${p.nombre}</option>`).join("");
+        (planes || []).map(p => `<option value="${p.id}">${p.nombre} — $${Number(p.precio || 0).toFixed(2)}</option>`).join("");
 
       const tbody = document.querySelector("#tablaPlanes tbody");
       tbody.innerHTML = "";
 
       if (!planes || planes.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:#999;">No hay planes creados todavía</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#999;">No hay planes creados todavía</td></tr>`;
         return;
       }
 
@@ -250,6 +254,7 @@
           <tr>
             <td>${p.nombre}</td>
             <td>${p.duracion_dias} día(s)</td>
+            <td>$${Number(p.precio || 0).toFixed(2)}</td>
             <td><button class="btn-accion btn-borrar-item" onclick="eliminarPlan('${p.id}', '${p.nombre.replace(/'/g, "\\'")}')">Eliminar</button></td>
           </tr>`;
       });
@@ -258,14 +263,16 @@
     async function crearPlan() {
       const nombre = document.getElementById("nuevoPlanNombre").value.trim();
       const dias = parseInt(document.getElementById("nuevoPlanDias").value, 10);
+      const precio = parseFloat(document.getElementById("nuevoPlanPrecio").value) || 0;
 
       if (!nombre || !dias || dias < 1) { alert("Escribe un nombre y una duración válida en días."); return; }
 
       try {
-        const { error } = await _supabase.from('planes').insert({ nombre, duracion_dias: dias });
+        const { error } = await _supabase.from('planes').insert({ nombre, duracion_dias: dias, precio });
         if (error) throw error;
         document.getElementById("nuevoPlanNombre").value = "";
         document.getElementById("nuevoPlanDias").value = "";
+        document.getElementById("nuevoPlanPrecio").value = "";
         await cargarPlanes();
       } catch (err) {
         alert("❌ Error: " + err.message);
