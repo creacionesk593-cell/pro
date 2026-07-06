@@ -42,7 +42,12 @@
       mostrarErrorDeEnlaceSiExiste();
 
       const { data: { session } } = await _supabase.auth.getSession();
-      if (session) await redirigirSegunRol(session.user.id);
+      if (session) {
+        const resultado = await redirigirSegunRol(session.user.id);
+        if (resultado && !resultado.ok) {
+          document.getElementById("mensajeError").innerText = resultado.mensaje;
+        }
+      }
     });
 
     function mostrarErrorDeEnlaceSiExiste() {
@@ -89,9 +94,18 @@
 
     async function redirigirSegunRol(userId) {
       const { data: perfil } = await _supabase.from('perfiles').select('rol, activo, tenant_id').eq('id', userId).single();
-      if (!perfil || perfil.activo === false) return;
 
-      if (perfil.rol === 'super_admin') { window.location.href = "superadmin.html"; return; }
+      if (!perfil) {
+        await _supabase.auth.signOut();
+        return { ok: false, mensaje: "No se encontró tu cuenta. Contacta a tu proveedor." };
+      }
+
+      if (perfil.activo === false) {
+        await _supabase.auth.signOut();
+        return { ok: false, mensaje: "⚠️ Tu cuenta está suspendida. Contacta a tu proveedor." };
+      }
+
+      if (perfil.rol === 'super_admin') { window.location.href = "superadmin.html"; return { ok: true }; }
 
       let slug = null;
       if (perfil.tenant_id) {
@@ -100,6 +114,7 @@
       }
       const destino = perfil.rol === 'admin' ? "admin.html" : "registro.html";
       window.location.href = slug ? `${destino}?tenant=${encodeURIComponent(slug)}` : destino;
+      return { ok: true };
     }
 
     document.getElementById("clave").addEventListener("keydown", (e) => { if (e.key === "Enter") iniciarSesion(); });
@@ -125,7 +140,12 @@
         return;
       }
 
-      await redirigirSegunRol(data.user.id);
+      const resultado = await redirigirSegunRol(data.user.id);
+      if (resultado && !resultado.ok) {
+        msg.innerText = resultado.mensaje;
+        btn.disabled = false;
+        btn.innerText = "Ingresar";
+      }
     }
 
     async function solicitarRecuperacion() {
