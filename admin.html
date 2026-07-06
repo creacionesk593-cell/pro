@@ -80,6 +80,8 @@
   
   <script src="https://unpkg.com/@supabase/supabase-js@2" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js" defer></script>
   <script src="conexion.js" defer></script>
   <script src="auth.js" defer></script>
 </head>
@@ -98,9 +100,12 @@
     </header>
     <main id="mainPanel">
       
-      <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+      <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
         <a href="registro.html" class="btn-regresar">⬅️ Ir al Formulario de Registro</a>
-        <button id="btnExportarExcel" class="btn-descarga" onclick="descargarBaseDatosExcel()">🟢 Descargar Excel (Formato Oficial)</button>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button id="btnExportarExcel" class="btn-descarga" onclick="descargarBaseDatosExcel()">🟢 Descargar Excel (Formato Oficial)</button>
+          <button id="btnInformePDF" class="btn-descarga" style="background:#c0392b;" onclick="generarInformePDF()">📄 Descargar Informe PDF</button>
+        </div>
       </div>
 
       <div class="tarjetas-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
@@ -526,10 +531,10 @@
 
     async function descargarBaseDatosExcel() {
       try {
-        const { data } = await _supabase.from('registros_bingo').select('carton, nombre, ciudad, correo, telefono').order('id', { ascending: true });
+        const { data } = await _supabase.from('registros_bingo').select('carton, nombre, ciudad, correo, telefono, vendedor').order('id', { ascending: true });
         if (!data || data.length === 0) return alert("No hay datos.");
         
-        const filasProcesadas = data.map(row => ({ "CARTON": row.carton, "NOMBRES": row.nombre, "UNO_PARTICIPA": 1, "CIUDAD": row.ciudad, "CORREO": row.correo, "TELEFONO": row.telefono }));
+        const filasProcesadas = data.map(row => ({ "CARTON": row.carton, "NOMBRES": row.nombre, "UNO_PARTICIPA": 1, "CIUDAD": row.ciudad, "CORREO": row.correo, "TELEFONO": row.telefono, "VENDEDOR": row.vendedor || "" }));
         const libroTrabajo = XLSX.utils.book_new();
         const hojaTrabajo = XLSX.utils.json_to_sheet(filasProcesadas);
         XLSX.utils.book_append_sheet(libroTrabajo, hojaTrabajo, "CARTONES");
@@ -541,6 +546,76 @@
         }
         XLSX.writeFile(libroTrabajo, `registros_tubingo_pro.xlsx`);
       } catch (err) { alert(err.message); }
+    }
+
+    async function generarInformePDF() {
+      try {
+        const { data, error } = await _supabase.from('registros_bingo').select('vendedor, nombre, telefono').order('id', { ascending: true });
+        if (error) throw error;
+        if (!data || data.length === 0) return alert("No hay datos para generar el informe.");
+
+        const totalCartones = data.length;
+
+        // Ranking de vendedores (quién ha registrado más cartones)
+        const conteoVendedores = {};
+        data.forEach(r => {
+          const clave = r.vendedor && r.vendedor.trim() ? r.vendedor.trim() : "Sin especificar";
+          conteoVendedores[clave] = (conteoVendedores[clave] || 0) + 1;
+        });
+        const rankingVendedores = Object.entries(conteoVendedores)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 20);
+
+        // Ranking de clientes (quién ha comprado/registrado más cartones), con su celular para poder llamarlo
+        const conteoClientes = {};
+        data.forEach(r => {
+          const clave = (r.nombre || "") + '|' + (r.telefono || "");
+          if (!conteoClientes[clave]) conteoClientes[clave] = { nombre: r.nombre || "—", telefono: r.telefono || "—", total: 0 };
+          conteoClientes[clave].total++;
+        });
+        const rankingClientes = Object.values(conteoClientes)
+          .sort((a, b) => b.total - a.total)
+          .slice(0, 10);
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+
+        doc.setFontSize(16);
+        doc.text("Informe de Ventas - TuBingo Pro", 14, 18);
+        doc.setFontSize(9);
+        doc.setTextColor(120);
+        doc.text(`Generado: ${new Date().toLocaleString('es-EC')}`, 14, 24);
+        doc.setTextColor(0);
+        doc.setFontSize(12);
+        doc.text(`Total de cartones registrados: ${totalCartones}`, 14, 34);
+
+        doc.setFontSize(11);
+        doc.text("Ranking de Vendedores (Top 20)", 14, 44);
+        doc.autoTable({
+          startY: 48,
+          head: [["#", "Vendedor", "Cartones Registrados"]],
+          body: rankingVendedores.map((v, i) => [i + 1, v[0], v[1]]),
+          theme: 'grid',
+          headStyles: { fillColor: [46, 204, 113] },
+          styles: { fontSize: 9 }
+        });
+
+        const siguienteY = doc.lastAutoTable.finalY + 12;
+        doc.setFontSize(11);
+        doc.text("Clientes con más cartones (para contactarlos)", 14, siguienteY);
+        doc.autoTable({
+          startY: siguienteY + 4,
+          head: [["#", "Nombre", "Celular", "Cartones"]],
+          body: rankingClientes.map((c, i) => [i + 1, c.nombre, c.telefono, c.total]),
+          theme: 'grid',
+          headStyles: { fillColor: [52, 152, 219] },
+          styles: { fontSize: 9 }
+        });
+
+        doc.save(`informe_tubingo_${Date.now()}.pdf`);
+      } catch (err) {
+        alert("❌ Error generando el informe: " + err.message);
+      }
     }
 
     async function procesarLimpiezaAbsoluta() {
