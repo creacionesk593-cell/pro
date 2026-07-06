@@ -1,14 +1,12 @@
 // =========================================================================
-// auth.js — Sesión, roles Y multi-tenant (con bloqueo por suscripción vencida)
+// auth.js — Sesión, roles, multi-tenant, bloqueo por suscripción vencida,
+// y mantiene el "slug" del cliente visible en la URL (para soporte/debug).
 // Debe cargarse DESPUÉS de conexion.js en cada página protegida.
 // =========================================================================
 
 /**
  * Exige sesión iniciada y, opcionalmente, un rol específico.
  * Devuelve { session, perfil, tenant, habilitado } o null (y redirige).
- *
- * "habilitado" = true/false según si la suscripción del tenant está vigente.
- * super_admin siempre tiene habilitado = true (no pertenece a un tenant).
  */
 async function requerirSesion(rolRequerido) {
   const { data: { session } } = await _supabase.auth.getSession();
@@ -30,11 +28,6 @@ async function requerirSesion(rolRequerido) {
     return null;
   }
 
-  if (rolRequerido && perfil.rol !== rolRequerido) {
-    window.location.href = paginaSegunRol(perfil.rol);
-    return null;
-  }
-
   let tenant = null;
   let habilitado = true;
 
@@ -49,9 +42,33 @@ async function requerirSesion(rolRequerido) {
     const { data: estaHabilitado } = await _supabase
       .rpc('tenant_esta_habilitado', { p_tenant_id: perfil.tenant_id });
     habilitado = !!estaHabilitado;
+
+    // Deja el nombre del cliente visible en la URL, ej: registro.html?tenant=el_profe
+    // (no recarga la página, solo actualiza lo que se ve en la barra de direcciones)
+    if (tenant && tenant.slug) {
+      mantenerSlugEnURL(tenant.slug);
+    }
+  }
+
+  if (rolRequerido && perfil.rol !== rolRequerido) {
+    window.location.href = agregarSlugALaURL(paginaSegunRol(perfil.rol), tenant ? tenant.slug : null);
+    return null;
   }
 
   return { session, perfil, tenant, habilitado };
+}
+
+function mantenerSlugEnURL(slug) {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("tenant") !== slug) {
+    params.set("tenant", slug);
+    const nuevaURL = window.location.pathname + "?" + params.toString();
+    history.replaceState(null, "", nuevaURL);
+  }
+}
+
+function agregarSlugALaURL(pagina, slug) {
+  return slug ? `${pagina}?tenant=${encodeURIComponent(slug)}` : pagina;
 }
 
 function paginaSegunRol(rol) {
@@ -61,13 +78,15 @@ function paginaSegunRol(rol) {
 }
 
 async function cerrarSesion() {
+  // Conserva el slug actual (si lo hay) para que el login siga mostrando el logo correcto
+  const params = new URLSearchParams(window.location.search);
+  const slug = params.get("tenant");
   await _supabase.auth.signOut();
-  window.location.href = "index.html";
+  window.location.href = agregarSlugALaURL("index.html", slug);
 }
 
 /**
- * Muestra un banner de "suscripción vencida" y bloquea los botones de envío
- * indicados (sin ocultar la página, tal como se pidió: se puede VER pero no USAR).
+ * Muestra un banner de "suscripción vencida" y bloquea los botones indicados.
  */
 function bloquearPorSuscripcionVencida(idsBotonesABloquear) {
   const banner = document.createElement('div');
