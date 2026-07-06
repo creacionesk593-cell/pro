@@ -37,6 +37,9 @@
     .estado-suspendido { color: #7f8c8d; font-weight: bold; }
 
     .loading { opacity: 0.5; pointer-events: none; }
+    @media (max-width: 640px) {
+      header { flex-direction: column; gap: 10px; text-align: center; padding: 15px; }
+    }
   </style>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="conexion.js"></script>
