@@ -80,6 +80,11 @@
 
   <div id="vistaDashboard" class="dashboard">
     <header id="panelHeader" style="position:relative;">
+      <div id="barraEstadoTenant" style="position:absolute; left:15px; top:15px; text-align:left; font-size:0.85rem; line-height:1.4; opacity:0.98;">
+        <div id="correoAdminActivo" style="font-weight:bold;"></div>
+        <div id="estadoTenantActivo"></div>
+        <div id="vencimientoTenantActivo"></div>
+      </div>
       <h2>Panel General de Control - TuBingo Pro</h2>
       <img id="imgLogoPanel" class="header-logo" src="" alt="Logo">
       <button onclick="cerrarSesion()" style="position:absolute; right:20px; width:auto; padding:8px 14px; font-size:13px; background:rgba(255,255,255,0.2);">Salir</button>
@@ -290,6 +295,9 @@
       document.getElementById("vistaDashboard").style.display = "block";
       window.MI_TENANT_ID = acceso.perfil.tenant_id;
 
+      document.getElementById("correoAdminActivo").innerText = acceso.session.user.email;
+      mostrarEstadoDelTenant(acceso);
+
       if (!acceso.habilitado) {
         bloquearPorSuscripcionVencida(["btnActualizarParametros", "btnGuardarDiseno", "btnGuardarCodigoCanal"]);
       }
@@ -368,6 +376,40 @@
         console.error(err);
       } finally { 
         document.getElementById("mainPanel").classList.remove("loading"); 
+      }
+    }
+
+    async function mostrarEstadoDelTenant(acceso) {
+      const estadoEl = document.getElementById("estadoTenantActivo");
+      const vencEl = document.getElementById("vencimientoTenantActivo");
+
+      const activoManual = acceso.tenant && acceso.tenant.activo !== false;
+
+      if (!activoManual) {
+        estadoEl.innerHTML = `<span style="color:#ffcccb; font-weight:bold;">⚠️ Cuenta suspendida</span>`;
+      } else if (acceso.habilitado) {
+        estadoEl.innerHTML = `<span style="color:#d4fcd4; font-weight:bold;">✅ Activo</span>`;
+      } else {
+        estadoEl.innerHTML = `<span style="color:#ffcccb; font-weight:bold;">⚠️ Suscripción vencida</span>`;
+      }
+
+      try {
+        const { data: ultimaSuscripcion } = await _supabase
+          .from('suscripciones')
+          .select('fecha_fin')
+          .eq('tenant_id', window.MI_TENANT_ID)
+          .order('fecha_fin', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (ultimaSuscripcion) {
+          const fecha = new Date(ultimaSuscripcion.fecha_fin).toLocaleDateString('es-EC');
+          vencEl.innerText = `Vence: ${fecha}`;
+        } else {
+          vencEl.innerText = "Sin suscripción activa";
+        }
+      } catch (err) {
+        console.error("Error consultando vencimiento:", err.message);
       }
     }
 
