@@ -99,6 +99,29 @@
     </div>
 
     <div class="seccion">
+      <h3>🏷️ Gestión de Planes</h3>
+      <p style="font-size:0.85rem; color:#7f8c8d; margin-top:-5px;">Crea, ve o elimina los planes que ofreces (ej. "1 día", "1 mes", "1 año", o los que quieras).</p>
+      <div class="grid-parametros">
+        <div class="grupo-input">
+          <label for="nuevoPlanNombre">Nombre del plan:</label>
+          <input type="text" id="nuevoPlanNombre" placeholder="ej: 15 días">
+        </div>
+        <div class="grupo-input">
+          <label for="nuevoPlanDias">Duración (días):</label>
+          <input type="number" id="nuevoPlanDias" min="1" placeholder="ej: 15">
+        </div>
+      </div>
+      <button onclick="crearPlan()">Crear Plan</button>
+
+      <div class="table-container" style="margin-top:20px;">
+        <table id="tablaPlanes">
+          <thead><tr><th>Nombre</th><th>Duración</th><th>Acciones</th></tr></thead>
+          <tbody><tr><td colspan="3" style="text-align:center; color:#999;">Cargando...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="seccion">
       <h3>💳 Vender / Renovar un Plan</h3>
       <div class="grid-parametros">
         <div class="grupo-input">
@@ -137,6 +160,7 @@
 
   <script>
     let TENANTS_CACHE = [];
+    const BASE_URL_ACTUAL = "/" + (window.location.pathname.split('/').filter(Boolean)[0] || "") + "/";
 
     window.addEventListener('load', async () => {
       const acceso = await requerirSesion('super_admin');
@@ -188,7 +212,7 @@
           tbody.innerHTML += `
             <tr>
               <td>${t.nombre}</td>
-              <td>/tubingo/${t.slug}</td>
+              <td>${BASE_URL_ACTUAL}${t.slug}</td>
               <td class="${estadoClase}">${estadoTexto}</td>
               <td>${vence ? new Date(vence).toLocaleDateString('es-EC') : '—'}</td>
               <td>
@@ -207,9 +231,61 @@
     }
 
     async function cargarPlanes() {
-      const { data: planes } = await _supabase.from('planes').select('*').order('duracion_dias');
+      const { data: planes, error } = await _supabase.from('planes').select('*').order('duracion_dias');
+      if (error) { console.error(error.message); return; }
+
       document.getElementById("planElegido").innerHTML =
         (planes || []).map(p => `<option value="${p.id}">${p.nombre}</option>`).join("");
+
+      const tbody = document.querySelector("#tablaPlanes tbody");
+      tbody.innerHTML = "";
+
+      if (!planes || planes.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:#999;">No hay planes creados todavía</td></tr>`;
+        return;
+      }
+
+      planes.forEach(p => {
+        tbody.innerHTML += `
+          <tr>
+            <td>${p.nombre}</td>
+            <td>${p.duracion_dias} día(s)</td>
+            <td><button class="btn-accion btn-borrar-item" onclick="eliminarPlan('${p.id}', '${p.nombre.replace(/'/g, "\\'")}')">Eliminar</button></td>
+          </tr>`;
+      });
+    }
+
+    async function crearPlan() {
+      const nombre = document.getElementById("nuevoPlanNombre").value.trim();
+      const dias = parseInt(document.getElementById("nuevoPlanDias").value, 10);
+
+      if (!nombre || !dias || dias < 1) { alert("Escribe un nombre y una duración válida en días."); return; }
+
+      try {
+        const { error } = await _supabase.from('planes').insert({ nombre, duracion_dias: dias });
+        if (error) throw error;
+        document.getElementById("nuevoPlanNombre").value = "";
+        document.getElementById("nuevoPlanDias").value = "";
+        await cargarPlanes();
+      } catch (err) {
+        alert("❌ Error: " + err.message);
+      }
+    }
+
+    async function eliminarPlan(id, nombre) {
+      if (!confirm(`¿Eliminar el plan "${nombre}"?`)) return;
+
+      try {
+        const { error } = await _supabase.from('planes').delete().eq('id', id);
+        if (error) throw error;
+        await cargarPlanes();
+      } catch (err) {
+        if (err.message.includes("foreign key") || err.code === "23503") {
+          alert("❌ No se puede eliminar: este plan ya se le vendió a algún cliente (queda en su historial). Puedes dejar de usarlo simplemente no seleccionándolo más.");
+        } else {
+          alert("❌ Error: " + err.message);
+        }
+      }
     }
 
     async function crearTenant() {
@@ -228,7 +304,7 @@
         // Crea también la fila de configuración inicial para ese tenant
         await _supabase.from('configuracion').insert({ tenant_id: data.id, limite_cartones: 5, caracteres_qr: 6, fecha_cierre: new Date(Date.now() + 30*24*60*60*1000).toISOString() });
 
-        alert(`✅ Cliente "${nombre}" creado. URL: /tubingo/${slug}`);
+        alert(`✅ Cliente "${nombre}" creado. URL: ${BASE_URL_ACTUAL}${slug}`);
         document.getElementById("nuevoSlug").value = "";
         document.getElementById("nuevoNombreTenant").value = "";
         document.getElementById("nuevoLogoTenant").value = "";
