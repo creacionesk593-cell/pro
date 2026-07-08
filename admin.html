@@ -94,7 +94,7 @@
         <div id="estadoTenantActivo"></div>
         <div id="vencimientoTenantActivo" style="opacity:0.9;"></div>
       </div>
-      <h2 style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); margin:0; white-space:nowrap;">Panel General de Control - TuBingo Pro</h2>
+      <h2 style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); margin:0; white-space:nowrap;">Panel General de Control</h2>
       <img id="imgLogoPanel" class="header-logo" src="" alt="Logo">
       <button onclick="cerrarSesion()" style="position:absolute; right:20px; top:50%; transform:translateY(-50%); width:auto; padding:8px 14px; font-size:13px; background:rgba(255,255,255,0.2);">Salir</button>
     </header>
@@ -188,10 +188,25 @@
       <div class="seccion">
         <h3>Gestión Individual de Cartones (Uno por Uno)</h3>
         <input type="text" id="inputBuscar" class="busqueda-input" oninput="filtrarCartones()" placeholder="🔍 Buscar por nombre de cliente, número de celular o serie de cartón...">
+
+        <div style="background:#fdf2e9; padding:12px; border-radius:6px; margin:12px 0;">
+          <label style="font-weight:bold; font-size:0.85rem;">🗑️ Eliminar por lote (series o rangos, igual que en el registro):</label>
+          <div style="display:flex; gap:10px; margin-top:6px; flex-wrap:wrap;">
+            <input type="text" id="inputEliminarLote" placeholder="Ej: 00562, 00745, 00852 - 00860" style="flex:1; min-width:220px; padding:8px; border:1px solid #ccc; border-radius:6px;">
+            <button class="btn-accion btn-borrar-item" style="width:auto;" onclick="eliminarCartonesPorLote()">Eliminar Lote</button>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <label style="font-size:0.85rem;"><input type="checkbox" id="chkSeleccionarTodos" onchange="alternarSeleccionTodos()"> Seleccionar todos (visibles)</label>
+          <button class="btn-accion btn-borrar-item" style="width:auto;" onclick="eliminarSeleccionados()">🗑️ Eliminar Seleccionados</button>
+        </div>
+
         <div class="table-container">
           <table id="tablaIndividualCartones">
             <thead>
               <tr>
+                <th></th>
                 <th>#</th>
                 <th>Serie (Cartón)</th>
                 <th>Cliente</th>
@@ -200,7 +215,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr><td colspan="5" style="color:#999; text-align:center;">Cargando base de datos individual...</td></tr>
+              <tr><td colspan="6" style="color:#999; text-align:center;">Cargando base de datos individual...</td></tr>
             </tbody>
           </table>
         </div>
@@ -502,16 +517,18 @@
       datos.forEach((r, index) => {
         tbodyInd.innerHTML += `
           <tr>
+            <td><input type="checkbox" class="chkFilaCarton" value="${r.id}"></td>
             <td>${index + 1}</td>
             <td><mark style="background:#eccc68; padding:2px 6px; border-radius:4px; font-weight:bold;">${r.carton}</mark></td>
             <td>${r.nombre || "---"}</td>
             <td>${r.telefono || "---"}</td>
             <td>
-              <button class="btn-accion btn-modificar" onclick="modificarCartonIndividual(${r.id}, '${r.carton}', '${r.nombre}')">Modificar</button>
-              <button class="btn-accion btn-borrar-item" onclick="eliminarCartonIndividual(${r.id}, '${r.carton}', '${r.nombre}')">Eliminar</button>
+              <button class="btn-accion btn-modificar" onclick="modificarCartonIndividual(${r.id}, '${r.carton}', '${(r.nombre || '').replace(/'/g, "\\'")}')">Modificar</button>
+              <button class="btn-accion btn-borrar-item" onclick="eliminarCartonIndividual(${r.id}, '${r.carton}', '${(r.nombre || '').replace(/'/g, "\\'")}')">Eliminar</button>
             </td>
           </tr>`;
       });
+      document.getElementById("chkSeleccionarTodos").checked = false;
     }
 
     function filtrarCartones() {
@@ -520,15 +537,102 @@
       renderizarTablaIndividual(filtrados);
     }
 
-    async function modificarCartonIndividual(id, cartonActual, cliente) {
-      let nuevoCodigo = prompt(`Modificando registro de ${cliente}.\n\nEscribe el NUEVO código de serie (Actual: ${cartonActual}):`);
-      if (!nuevoCodigo || nuevoCodigo.trim() === cartonActual) return;
+    async function modificarCartonIndividual(id, cartonActual, nombreActual) {
+      let nuevoCodigo = prompt(`Serie del cartón (deja igual si no quieres cambiarla):`, cartonActual);
+      if (nuevoCodigo === null) return; // canceló
+
+      let nuevoNombre = prompt(`Nombre del cliente (por si el vendedor lo escribió mal):`, nombreActual);
+      if (nuevoNombre === null) return; // canceló
+
+      const cambios = {};
+      if (nuevoCodigo.trim() && nuevoCodigo.trim() !== cartonActual) cambios.carton = nuevoCodigo.trim();
+      if (nuevoNombre.trim() && nuevoNombre.trim() !== nombreActual) cambios.nombre = nuevoNombre.trim();
+
+      if (Object.keys(cambios).length === 0) return;
 
       try {
-        await _supabase.from('registros_bingo').update({ carton: nuevoCodigo.trim() }).eq('id', id);
-        alert("¡Cartón modificado con éxito!");
+        const { error } = await _supabase.from('registros_bingo').update(cambios).eq('id', id);
+        if (error) throw error;
+        alert("¡Registro actualizado con éxito!");
         cargarMetricasDelSistema();
-      } catch (err) { alert(err.message); }
+      } catch (err) { alert("❌ " + err.message); }
+    }
+
+    function alternarSeleccionTodos() {
+      const marcado = document.getElementById("chkSeleccionarTodos").checked;
+      document.querySelectorAll(".chkFilaCarton").forEach(chk => chk.checked = marcado);
+    }
+
+    async function eliminarSeleccionados() {
+      const ids = [...document.querySelectorAll(".chkFilaCarton:checked")].map(chk => Number(chk.value));
+      if (ids.length === 0) { alert("No has seleccionado ningún cartón."); return; }
+      if (!confirm(`¿Eliminar ${ids.length} cartón(es) seleccionado(s)? Esta acción no se puede deshacer.`)) return;
+
+      try {
+        const { error } = await _supabase.from('registros_bingo').delete().in('id', ids);
+        if (error) throw error;
+        alert(`✅ Se eliminaron ${ids.length} cartón(es).`);
+        cargarMetricasDelSistema();
+      } catch (err) { alert("❌ " + err.message); }
+    }
+
+    // Reutiliza el mismo formato que en el registro: "00562, 00745, 00852 - 00860"
+    function expandirSeriesLote(texto) {
+      const resultado = [];
+      const partes = texto.split(",");
+      for (let parte of partes) {
+        parte = parte.trim();
+        if (!parte) continue;
+        if (parte.includes("-")) {
+          const [ini, fin] = parte.split("-").map(s => s.trim());
+          if (!ini || !fin) continue;
+          const largo = Math.max(ini.length, fin.length);
+          const numIni = parseInt(ini, 10);
+          const numFin = parseInt(fin, 10);
+          if (isNaN(numIni) || isNaN(numFin)) continue;
+          const desde = Math.min(numIni, numFin);
+          const hasta = Math.max(numIni, numFin);
+          for (let n = desde; n <= hasta; n++) resultado.push(String(n).padStart(largo, '0'));
+        } else {
+          resultado.push(parte);
+        }
+      }
+      return resultado;
+    }
+
+    async function eliminarCartonesPorLote() {
+      const texto = document.getElementById("inputEliminarLote").value;
+      if (!texto.trim()) { alert("Escribe al menos una serie o rango."); return; }
+
+      const series = expandirSeriesLote(texto);
+      if (series.length === 0) { alert("No se reconoció ninguna serie válida."); return; }
+
+      if (!confirm(`Se buscarán ${series.length} serie(s) para eliminar. ¿Continuar?`)) return;
+
+      try {
+        const { data: encontrados, error: errBuscar } = await _supabase
+          .from('registros_bingo')
+          .select('id, carton')
+          .in('carton', series);
+        if (errBuscar) throw errBuscar;
+
+        if (!encontrados || encontrados.length === 0) {
+          alert("No se encontró ningún cartón registrado con esas series.");
+          return;
+        }
+
+        const idsAEliminar = encontrados.map(r => r.id);
+        const { error: errBorrar } = await _supabase.from('registros_bingo').delete().in('id', idsAEliminar);
+        if (errBorrar) throw errBorrar;
+
+        const noEncontrados = series.length - encontrados.length;
+        let mensaje = `✅ Se eliminaron ${encontrados.length} cartón(es).`;
+        if (noEncontrados > 0) mensaje += `\n(${noEncontrados} de las series escritas no estaban registradas)`;
+        alert(mensaje);
+
+        document.getElementById("inputEliminarLote").value = "";
+        cargarMetricasDelSistema();
+      } catch (err) { alert("❌ " + err.message); }
     }
 
     async function eliminarCartonIndividual(id, carton, cliente) {
@@ -825,6 +929,7 @@ async function cargarUsuarios() {
           <td style="color:${estaActivo ? '#2ecc71' : '#d63031'}; font-weight:bold;">${estaActivo ? 'Activo' : 'Suspendido'}</td>
           <td>
             <button class="btn-accion ${estaActivo ? 'btn-borrar-item' : 'btn-modificar'}" onclick="alternarSuspension('${u.id}', ${estaActivo})">${estaActivo ? 'Suspender' : 'Reactivar'}</button>
+            <button class="btn-accion btn-azul" onclick="editarDatosUsuario('${u.id}', '${(u.correo || '').replace(/'/g, "\\'")}', '${(u.nombre || '').replace(/'/g, "\\'")}')">Editar</button>
             <button class="btn-accion btn-modificar" onclick="resetearClaveUsuario('${u.id}', '${u.correo}')">Resetear Clave</button>
             <button class="btn-accion btn-borrar-item" onclick="eliminarUsuarioDefinitivo('${u.id}', '${u.correo}')">Eliminar</button>
           </td>
@@ -853,6 +958,32 @@ async function crearUsuarioNuevo() {
     document.getElementById("nuevoUsuarioCorreo").value = "";
     document.getElementById("nuevoUsuarioNombre").value = "";
     document.getElementById("nuevoUsuarioClave").value = "";
+    cargarUsuarios();
+  } catch (err) {
+    alert("❌ Error: " + err.message);
+  } finally {
+    document.getElementById("mainPanel").classList.remove("loading");
+  }
+}
+
+async function editarDatosUsuario(userId, correoActual, nombreActual) {
+  let nuevoNombre = prompt("Nombre del usuario:", nombreActual);
+  if (nuevoNombre === null) return; // canceló
+
+  let nuevoCorreo = prompt("Correo de acceso (login):", correoActual);
+  if (nuevoCorreo === null) return; // canceló
+
+  const cambios = {};
+  if (nuevoNombre.trim() && nuevoNombre.trim() !== nombreActual) cambios.nuevoNombre = nuevoNombre.trim();
+  if (nuevoCorreo.trim() && nuevoCorreo.trim() !== correoActual) cambios.nuevoCorreo = nuevoCorreo.trim();
+
+  if (Object.keys(cambios).length === 0) return;
+
+  document.getElementById("mainPanel").classList.add("loading");
+  try {
+    const resultado = await llamarFuncionAdmin("actualizar_datos_usuario", { userId, ...cambios });
+    if (resultado.error) { alert("❌ " + resultado.error); return; }
+    alert("✅ Datos actualizados con éxito.");
     cargarUsuarios();
   } catch (err) {
     alert("❌ Error: " + err.message);
