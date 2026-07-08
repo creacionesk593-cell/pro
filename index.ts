@@ -90,6 +90,36 @@ Deno.serve(async (req) => {
       return respuesta({ ok: true });
     }
 
+    if (accion === "actualizar_datos_usuario") {
+      const { userId, nuevoCorreo, nuevoNombre } = body;
+      if (!userId) return respuesta({ error: "Falta el id del usuario." }, 400);
+
+      if (!esSuper) {
+        const { data: objetivo } = await adminClient.from("perfiles").select("tenant_id").eq("id", userId).single();
+        if (!objetivo || objetivo.tenant_id !== llamador.tenant_id) {
+          return respuesta({ error: "Ese usuario no pertenece a tu cliente." }, 403);
+        }
+      }
+
+      // Actualiza el correo de acceso (login) si se pidió cambiarlo
+      if (nuevoCorreo) {
+        const { error: errAuth } = await adminClient.auth.admin.updateUserById(userId, { email: nuevoCorreo, email_confirm: true });
+        if (errAuth) throw errAuth;
+      }
+
+      // Actualiza los datos visibles en la tabla perfiles
+      const cambiosPerfil = {};
+      if (nuevoCorreo) cambiosPerfil.correo = nuevoCorreo;
+      if (nuevoNombre) cambiosPerfil.nombre = nuevoNombre;
+
+      if (Object.keys(cambiosPerfil).length > 0) {
+        const { error: errPerfil } = await adminClient.from("perfiles").update(cambiosPerfil).eq("id", userId);
+        if (errPerfil) throw errPerfil;
+      }
+
+      return respuesta({ ok: true });
+    }
+
     return respuesta({ error: "Acción no reconocida." }, 400);
 
   } catch (err) {
