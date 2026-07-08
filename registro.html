@@ -283,6 +283,31 @@
         bloquearPorSuscripcionVencida(["btnRegistrar"]);
       }
 
+      // Escucha cambios en tiempo real de la configuración (límite, fecha, modo manual)
+      // sin que el vendedor tenga que recargar la página.
+      _supabase.channel('config_tenant_' + window.MI_TENANT_ID)
+        .on('postgres_changes', {
+          event: '*', schema: 'public', table: 'configuracion', filter: `tenant_id=eq.${window.MI_TENANT_ID}`
+        }, (payload) => {
+          const nuevo = payload.new;
+          if (!nuevo) return;
+
+          CONFIG_SISTEMA.limite_cartones = nuevo.limite_cartones;
+          CONFIG_SISTEMA.caracteres_qr = nuevo.caracteres_qr;
+          CONFIG_SISTEMA.fecha_cierre = new Date(nuevo.fecha_cierre);
+          iniciarMonitoreoTiempo();
+
+          if (nuevo.permitir_manual) {
+            document.getElementById("bloqueQR").style.display = "none";
+            document.getElementById("bloqueManual").style.display = "block";
+          } else {
+            document.getElementById("bloqueQR").style.display = "block";
+            document.getElementById("bloqueManual").style.display = "none";
+            iniciarScannerQR();
+          }
+        })
+        .subscribe();
+
       fetch('https://api.ipify.org?format=json').then(res => res.json()).then(d => ipPublica = d.ip).catch(e => {});
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(p => { geoLatitud = p.coords.latitude; geoLongitud = p.coords.longitude; }, e => {});
