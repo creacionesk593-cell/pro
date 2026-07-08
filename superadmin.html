@@ -44,6 +44,9 @@
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="conexion.js"></script>
   <script src="auth.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
 
@@ -142,6 +145,49 @@
       </div>
       <button onclick="venderPlanATenant()">Vender / Renovar Plan</button>
       <p style="font-size:0.8rem; color:#7f8c8d; margin-top:10px;">Si el cliente ya tiene días vigentes, el nuevo plan se suma al final (no pierde lo que ya pagó).</p>
+
+      <hr style="margin:18px 0; border:none; border-top:1px solid #eee;">
+
+      <h4 style="margin-top:0;">🔧 Ajustar días (corregir una venta mal hecha)</h4>
+      <div class="grid-parametros">
+        <div class="grupo-input">
+          <label for="tenantParaAjuste">Cliente:</label>
+          <select id="tenantParaAjuste"></select>
+        </div>
+        <div class="grupo-input">
+          <label for="diasAjuste">Días a restar o sumar:</label>
+          <input type="number" id="diasAjuste" placeholder="ej: 15">
+        </div>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button style="background:#e74c3c;" onclick="ajustarDiasSuscripcion(-1)">➖ Restar Días</button>
+        <button style="background:#27ae60;" onclick="ajustarDiasSuscripcion(1)">➕ Sumar Días</button>
+      </div>
+      <p style="font-size:0.8rem; color:#7f8c8d; margin-top:10px;">Ejemplo: vendiste "1 mes" por error y el cliente solo quería 15 días → escribe 15 y presiona "Restar Días".</p>
+    </div>
+
+    <div class="seccion">
+      <h3>📊 Reporte y Métricas</h3>
+      <div class="grid-parametros" id="tarjetasMetricas">
+        <div class="grupo-input"><label>Total de Clientes</label><div id="metricaTotalClientes" style="font-size:1.8rem; font-weight:bold; color:#2c3e50;">—</div></div>
+        <div class="grupo-input"><label>Con Plan Activo</label><div id="metricaActivos" style="font-size:1.8rem; font-weight:bold; color:#2ecc71;">—</div></div>
+        <div class="grupo-input"><label>Vencidos</label><div id="metricaVencidos" style="font-size:1.8rem; font-weight:bold; color:#e74c3c;">—</div></div>
+        <div class="grupo-input"><label>Por Caducar (≤7 días)</label><div id="metricaPorCaducar" style="font-size:1.8rem; font-weight:bold; color:#f39c12;">—</div></div>
+      </div>
+
+      <div style="max-width:420px; margin:20px auto;">
+        <canvas id="graficoMetricas"></canvas>
+      </div>
+
+      <div class="table-container">
+        <table id="tablaReporteVendedores">
+          <thead><tr><th>Cliente (Slug)</th><th>Vendedores</th><th>Admins</th><th>Estado</th></tr></thead>
+          <tbody><tr><td colspan="4" style="text-align:center; color:#999;">Cargando...</td></tr></tbody>
+        </table>
+      </div>
+
+      <button style="background:#c0392b; margin-top:15px;" onclick="descargarReportePDF()">📄 Descargar Reporte en PDF</button>
+      <p style="font-size:0.8rem; color:#7f8c8d; margin-top:8px;">El PDF muestra el slug de cada cliente sin problema, pero los correos de los vendedores salen tapados (solo la primera letra y el dominio), para proteger su privacidad.</p>
     </div>
 
     <div class="seccion">
@@ -175,6 +221,7 @@
 
       await cargarTenants();
       await cargarPlanes();
+      await cargarReporteMetricas();
     });
 
     async function cargarTenants() {
@@ -187,6 +234,7 @@
         const opciones = TENANTS_CACHE.map(t => `<option value="${t.id}">${t.nombre}</option>`).join("");
         document.getElementById("tenantParaAdmin").innerHTML = opciones;
         document.getElementById("tenantParaPlan").innerHTML = opciones;
+        document.getElementById("tenantParaAjuste").innerHTML = opciones;
 
         // Traer la suscripción vigente más reciente de cada tenant
         const { data: suscripciones } = await _supabase
@@ -226,6 +274,7 @@
                 <button class="btn-accion ${t.activo ? 'btn-borrar-item' : 'btn-modificar'}" onclick="alternarActivoTenant('${t.id}', ${t.activo})">
                   ${t.activo ? 'Suspender' : 'Reactivar'}
                 </button>
+                <button class="btn-accion btn-modificar" onclick="editarTenant('${t.id}', '${(t.nombre || '').replace(/'/g, "\\'")}', '${t.slug}')">Editar</button>
               </td>
               <td>
                 <button class="btn-accion btn-azul" onclick="verAdminsDeTenant('${t.id}', '${t.nombre}')">Ver Admins</button>
@@ -368,6 +417,79 @@
       }
     }
 
+    async function ajustarDiasSuscripcion(signo) {
+      const tenant_id = document.getElementById("tenantParaAjuste").value;
+      const dias = parseInt(document.getElementById("diasAjuste").value, 10);
+
+      if (!tenant_id) { alert("Elige un cliente."); return; }
+      if (!dias || dias <= 0) { alert("Escribe un número de días válido (mayor a 0)."); return; }
+
+      const diasFinal = dias * signo;
+      const verbo = signo < 0 ? "restar" : "sumar";
+      if (!confirm(`¿Seguro que deseas ${verbo} ${dias} día(s) a la suscripción de este cliente?`)) return;
+
+      document.getElementById("mainPanel").classList.add("loading");
+      try {
+        const { data: ultima, error: errBuscar } = await _supabase
+          .from('suscripciones')
+          .select('id, fecha_fin')
+          .eq('tenant_id', tenant_id)
+          .order('fecha_fin', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (errBuscar) throw errBuscar;
+        if (!ultima) { alert("Este cliente todavía no tiene ninguna suscripción vendida."); return; }
+
+        const nuevaFecha = new Date(ultima.fecha_fin);
+        nuevaFecha.setDate(nuevaFecha.getDate() + diasFinal);
+
+        const { error: errUpdate } = await _supabase
+          .from('suscripciones')
+          .update({ fecha_fin: nuevaFecha.toISOString() })
+          .eq('id', ultima.id);
+
+        if (errUpdate) throw errUpdate;
+
+        alert(`✅ Listo. Nueva fecha de vencimiento: ${nuevaFecha.toLocaleDateString('es-EC')}`);
+        document.getElementById("diasAjuste").value = "";
+        await cargarTenants();
+      } catch (err) {
+        alert("❌ Error: " + err.message);
+      } finally {
+        document.getElementById("mainPanel").classList.remove("loading");
+      }
+    }
+
+    async function editarTenant(tenantId, nombreActual, slugActual) {
+      let nuevoNombre = prompt("Nombre del cliente:", nombreActual);
+      if (nuevoNombre === null) return;
+
+      let nuevoSlug = prompt("Slug (parte de la URL, sin espacios):", slugActual);
+      if (nuevoSlug === null) return;
+
+      nuevoSlug = nuevoSlug.trim().toLowerCase().replace(/\s+/g, '-');
+
+      const cambios = {};
+      if (nuevoNombre.trim() && nuevoNombre.trim() !== nombreActual) cambios.nombre = nuevoNombre.trim();
+      if (nuevoSlug && nuevoSlug !== slugActual) cambios.slug = nuevoSlug;
+
+      if (Object.keys(cambios).length === 0) return;
+
+      try {
+        const { error } = await _supabase.from('tenants').update(cambios).eq('id', tenantId);
+        if (error) throw error;
+        alert("✅ Cliente actualizado con éxito.");
+        await cargarTenants();
+      } catch (err) {
+        if (err.code === "23505") {
+          alert("❌ Ese slug ya lo está usando otro cliente. Elige uno distinto.");
+        } else {
+          alert("❌ Error: " + err.message);
+        }
+      }
+    }
+
     async function alternarActivoTenant(tenantId, estabaActivo) {
       const accion = estabaActivo ? "suspender" : "reactivar";
       if (!confirm(`¿Seguro que deseas ${accion} este cliente? Esto bloquea/desbloquea todo su sistema de inmediato.`)) return;
@@ -396,19 +518,41 @@
 
       let listado = data.map(u => `• ${u.correo} — ${u.rol}${u.activo === false ? ' (SUSPENDIDO)' : ''}`).join("\n");
       const accion = prompt(
-        `Usuarios de "${nombreTenant}":\n\n${listado}\n\nEscribe el correo de un usuario para RESETEAR su contraseña, o deja vacío para cerrar:`
+        `Usuarios de "${nombreTenant}":\n\n${listado}\n\nEscribe el correo de un usuario para gestionarlo, o deja vacío para cerrar:`
       );
 
       if (!accion) return;
       const usuario = data.find(u => u.correo === accion.trim());
       if (!usuario) { alert("No encontré ese correo en la lista."); return; }
 
-      const claveNueva = prompt(`Nueva contraseña temporal para ${usuario.correo}:`);
-      if (!claveNueva || claveNueva.length < 6) { alert("Contraseña inválida (mínimo 6 caracteres)."); return; }
+      const opcion = prompt(
+        `¿Qué deseas hacer con ${usuario.correo}?\n\n1 = Resetear contraseña\n2 = Editar nombre/correo\n\nEscribe 1 o 2:`
+      );
 
-      const resultado = await llamarFuncionAdmin("resetear_clave", { userId: usuario.id, claveNueva });
-      if (resultado.error) { alert("❌ " + resultado.error); return; }
-      alert(`✅ Contraseña de ${usuario.correo} actualizada a: ${claveNueva}`);
+      if (opcion === "1") {
+        const claveNueva = prompt(`Nueva contraseña temporal para ${usuario.correo}:`);
+        if (!claveNueva || claveNueva.length < 6) { alert("Contraseña inválida (mínimo 6 caracteres)."); return; }
+
+        const resultado = await llamarFuncionAdmin("resetear_clave", { userId: usuario.id, claveNueva });
+        if (resultado.error) { alert("❌ " + resultado.error); return; }
+        alert(`✅ Contraseña de ${usuario.correo} actualizada a: ${claveNueva}`);
+
+      } else if (opcion === "2") {
+        let nuevoNombre = prompt("Nombre:", usuario.nombre || "");
+        if (nuevoNombre === null) return;
+        let nuevoCorreo = prompt("Correo de acceso (login):", usuario.correo || "");
+        if (nuevoCorreo === null) return;
+
+        const cambios = {};
+        if (nuevoNombre.trim() && nuevoNombre.trim() !== usuario.nombre) cambios.nuevoNombre = nuevoNombre.trim();
+        if (nuevoCorreo.trim() && nuevoCorreo.trim() !== usuario.correo) cambios.nuevoCorreo = nuevoCorreo.trim();
+
+        if (Object.keys(cambios).length === 0) return;
+
+        const resultado = await llamarFuncionAdmin("actualizar_datos_usuario", { userId: usuario.id, ...cambios });
+        if (resultado.error) { alert("❌ " + resultado.error); return; }
+        alert("✅ Datos actualizados con éxito.");
+      }
     }
 
     async function llamarFuncionAdmin(accion, datosExtra) {
@@ -419,6 +563,164 @@
         body: JSON.stringify({ accion, ...datosExtra })
       });
       return await respuesta.json();
+    }
+
+    /* =========================================================================
+       REPORTE Y MÉTRICAS
+       ========================================================================= */
+    let ULTIMO_REPORTE = null; // se guarda para poder generar el PDF sin repetir consultas
+    let graficoActual = null;
+
+    function enmascararCorreo(correo) {
+      if (!correo || !correo.includes('@')) return correo || '—';
+      const [usuario, dominio] = correo.split('@');
+      return usuario.charAt(0) + '***@' + dominio;
+    }
+
+    async function cargarReporteMetricas() {
+      try {
+        const { data: tenants, error: errTenants } = await _supabase.from('tenants').select('id, nombre, slug, activo');
+        if (errTenants) throw errTenants;
+
+        const { data: suscripciones, error: errSus } = await _supabase
+          .from('suscripciones')
+          .select('tenant_id, fecha_fin')
+          .order('fecha_fin', { ascending: false });
+        if (errSus) throw errSus;
+
+        const { data: perfiles, error: errPerfiles } = await _supabase
+          .from('perfiles')
+          .select('tenant_id, rol, correo')
+          .not('tenant_id', 'is', null);
+        if (errPerfiles) throw errPerfiles;
+
+        const vencimientoPorTenant = {};
+        (suscripciones || []).forEach(s => {
+          if (!vencimientoPorTenant[s.tenant_id]) vencimientoPorTenant[s.tenant_id] = s.fecha_fin;
+        });
+
+        const ahora = new Date();
+        const en7dias = new Date(ahora.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+        let totalActivos = 0, totalVencidos = 0, totalPorCaducar = 0;
+        const filasReporte = [];
+
+        (tenants || []).forEach(t => {
+          const vence = vencimientoPorTenant[t.id];
+          const vigente = t.activo && vence && new Date(vence) >= ahora;
+          const porCaducar = vigente && new Date(vence) <= en7dias;
+
+          if (!vigente) totalVencidos++;
+          else if (porCaducar) { totalActivos++; totalPorCaducar++; }
+          else totalActivos++;
+
+          const staffDelTenant = (perfiles || []).filter(p => p.tenant_id === t.id);
+          const vendedores = staffDelTenant.filter(p => p.rol === 'usuario');
+          const admins = staffDelTenant.filter(p => p.rol === 'admin');
+
+          let estado = !t.activo ? "Suspendido" : (vigente ? (porCaducar ? "Por caducar" : "Activo") : "Vencido");
+
+          filasReporte.push({
+            slug: t.slug,
+            nombre: t.nombre,
+            estado,
+            vendedoresCount: vendedores.length,
+            adminsCount: admins.length,
+            vendedoresCorreos: vendedores.map(v => v.correo)
+          });
+        });
+
+        document.getElementById("metricaTotalClientes").innerText = (tenants || []).length;
+        document.getElementById("metricaActivos").innerText = totalActivos;
+        document.getElementById("metricaVencidos").innerText = totalVencidos;
+        document.getElementById("metricaPorCaducar").innerText = totalPorCaducar;
+
+        const tbody = document.querySelector("#tablaReporteVendedores tbody");
+        tbody.innerHTML = filasReporte.length === 0
+          ? `<tr><td colspan="4" style="text-align:center; color:#999;">Sin datos todavía</td></tr>`
+          : filasReporte.map(f => `
+              <tr>
+                <td>${f.slug}</td>
+                <td style="text-align:center;">${f.vendedoresCount}</td>
+                <td style="text-align:center;">${f.adminsCount}</td>
+                <td>${f.estado}</td>
+              </tr>`).join("");
+
+        ULTIMO_REPORTE = { filasReporte, totalActivos, totalVencidos, totalPorCaducar, totalClientes: (tenants || []).length };
+
+        dibujarGraficoMetricas(totalActivos - totalPorCaducar, totalPorCaducar, totalVencidos);
+      } catch (err) {
+        console.error("Error cargando reporte:", err.message);
+      }
+    }
+
+    function dibujarGraficoMetricas(activos, porCaducar, vencidos) {
+      const ctx = document.getElementById("graficoMetricas").getContext("2d");
+      if (graficoActual) graficoActual.destroy();
+      graficoActual = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Activos', 'Por caducar (≤7 días)', 'Vencidos/Suspendidos'],
+          datasets: [{
+            data: [activos, porCaducar, vencidos],
+            backgroundColor: ['#2ecc71', '#f39c12', '#e74c3c']
+          }]
+        },
+        options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+      });
+    }
+
+    async function descargarReportePDF() {
+      if (!ULTIMO_REPORTE) { alert("Espera a que cargue el reporte primero."); return; }
+
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+
+      doc.setFontSize(16);
+      doc.text("Reporte de Clientes - TuBingo Pro", 14, 18);
+      doc.setFontSize(11);
+      doc.setTextColor(90);
+      doc.text(`Generado: ${new Date().toLocaleString('es-EC')}`, 14, 26);
+      doc.setTextColor(0);
+
+      doc.setFontSize(12);
+      doc.text(`Total de clientes: ${ULTIMO_REPORTE.totalClientes}   |   Activos: ${ULTIMO_REPORTE.totalActivos}   |   Vencidos: ${ULTIMO_REPORTE.totalVencidos}   |   Por caducar: ${ULTIMO_REPORTE.totalPorCaducar}`, 14, 36);
+
+      doc.setFontSize(12);
+      doc.text("Clientes y su cantidad de vendedores", 14, 46);
+      doc.autoTable({
+        startY: 50,
+        head: [["Cliente (Slug)", "Vendedores", "Admins", "Estado"]],
+        body: ULTIMO_REPORTE.filasReporte.map(f => [f.slug, f.vendedoresCount, f.adminsCount, f.estado]),
+        theme: 'grid',
+        headStyles: { fillColor: [44, 62, 80] },
+        styles: { fontSize: 9 }
+      });
+
+      let y = doc.lastAutoTable.finalY + 12;
+      doc.setFontSize(12);
+      doc.text("Vendedores por cliente (correos protegidos)", 14, y);
+      y += 4;
+
+      const filasVendedores = [];
+      ULTIMO_REPORTE.filasReporte.forEach(f => {
+        if (f.vendedoresCorreos.length === 0) {
+          filasVendedores.push([f.slug, "— sin vendedores —"]);
+        } else {
+          f.vendedoresCorreos.forEach(c => filasVendedores.push([f.slug, enmascararCorreo(c)]));
+        }
+      });
+
+      doc.autoTable({
+        startY: y,
+        head: [["Cliente (Slug)", "Vendedor (correo protegido)"]],
+        body: filasVendedores,
+        theme: 'grid',
+        headStyles: { fillColor: [52, 152, 219] },
+        styles: { fontSize: 9 }
+      });
+
+      doc.save(`reporte_clientes_tubingo_${Date.now()}.pdf`);
     }
   </script>
 </body>
