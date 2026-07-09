@@ -267,6 +267,8 @@
       const acceso = await requerirSesion('usuario');
       if (!acceso) return;
 
+      await mostrarTerminosSiHaceFalta(acceso.perfil);
+
       // Mostrar quién inició sesión y precargar su nombre en "vendedor"
       const nombreUsuario = acceso.perfil.nombre || acceso.session.user.email;
       document.getElementById("nombreUsuarioActivo").innerText = nombreUsuario;
