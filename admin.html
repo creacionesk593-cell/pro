@@ -94,7 +94,7 @@
         <div id="estadoTenantActivo"></div>
         <div id="vencimientoTenantActivo" style="opacity:0.9;"></div>
       </div>
-      <h2 style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); margin:0; white-space:nowrap;">Panel General de Control</h2>
+      <h2 style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); margin:0; white-space:nowrap;">Panel General de Control - TuBingo Pro</h2>
       <img id="imgLogoPanel" class="header-logo" src="" alt="Logo">
       <button onclick="cerrarSesion()" style="position:absolute; right:20px; top:50%; transform:translateY(-50%); width:auto; padding:8px 14px; font-size:13px; background:rgba(255,255,255,0.2);">Salir</button>
     </header>
@@ -308,6 +308,18 @@
         </div>
       </div>
 
+      <div class="seccion">
+        <h3>📜 Historial de Cambios</h3>
+        <p style="font-size:0.85rem; color:#7f8c8d; margin-top:-5px;">Registro de todo lo que ha pasado en tu sistema: quién hizo qué y cuándo. Si detectas un error, puedes descargarlo y enviarlo a soporte.</p>
+        <div class="table-container">
+          <table id="tablaHistorialAdmin">
+            <thead><tr><th>Fecha</th><th>Quién</th><th>Acción</th><th>Detalle</th></tr></thead>
+            <tbody><tr><td colspan="4" style="text-align:center; color:#999;">Cargando...</td></tr></tbody>
+          </table>
+        </div>
+        <button style="background:#2980b9; margin-top:10px;" onclick="exportarHistorialExcel()">🟢 Exportar Historial a Excel</button>
+      </div>
+
       <div class="seccion" style="border: 1px solid #ff7675;">
         <h3 style="color: #d63031;">Zona de Peligro (Cierre de Evento)</h3>
         <p style="font-size:0.9rem; color:#636e72;">Descarga el respaldo completo en Excel y vacía la base de datos de manera irreversible.</p>
@@ -342,6 +354,7 @@
       cargarDisenoEnPanel();
       cargarConfiguracionGlobalTable();
       cargarUsuarios();
+      cargarHistorialAdmin();
 
       // Se actualiza sola cuando entra un nuevo registro, sin recargar la página
       _supabase.channel('registros_tenant_' + window.MI_TENANT_ID)
@@ -415,6 +428,7 @@
           imgEl.style.display = "none";
         }
         alert("🎉 ¡Diseño de marca y colores guardados exitosamente!");
+        await registrarLog("Actualizar diseño de marca", `Logo: ${logoUrl || '(sin cambio)'}, Color registro: ${colReg}, Color panel: ${colPan}`);
       } catch(err) { 
         alert("Error de guardado: " + err.message); 
         console.error(err);
@@ -553,6 +567,7 @@
       try {
         const { error } = await _supabase.from('registros_bingo').update(cambios).eq('id', id);
         if (error) throw error;
+        await registrarLog("Modificar cartón", `Cartón "${cartonActual}" → ${JSON.stringify(cambios)}`);
         alert("¡Registro actualizado con éxito!");
         cargarMetricasDelSistema();
       } catch (err) { alert("❌ " + err.message); }
@@ -571,6 +586,7 @@
       try {
         const { error } = await _supabase.from('registros_bingo').delete().in('id', ids);
         if (error) throw error;
+        await registrarLog("Eliminar cartones (selección)", `Se eliminaron ${ids.length} cartón(es), IDs: ${ids.join(', ')}`);
         alert(`✅ Se eliminaron ${ids.length} cartón(es).`);
         cargarMetricasDelSistema();
       } catch (err) { alert("❌ " + err.message); }
@@ -628,6 +644,7 @@
         const noEncontrados = series.length - encontrados.length;
         let mensaje = `✅ Se eliminaron ${encontrados.length} cartón(es).`;
         if (noEncontrados > 0) mensaje += `\n(${noEncontrados} de las series escritas no estaban registradas)`;
+        await registrarLog("Eliminar cartones (lote)", `Lote solicitado: "${texto}" — Eliminados: ${encontrados.length}`);
         alert(mensaje);
 
         document.getElementById("inputEliminarLote").value = "";
@@ -639,6 +656,7 @@
       if (!confirm(`¿Eliminar el cartón "${carton}" de ${cliente}?`)) return;
       try {
         await _supabase.from('registros_bingo').delete().eq('id', id);
+        await registrarLog("Eliminar cartón", `Cartón "${carton}" de ${cliente}`);
         alert("Registro eliminado.");
         cargarMetricasDelSistema();
       } catch (err) { alert(err.message); }
@@ -781,6 +799,7 @@
       if (confirm("¿Vaciar todo?") && prompt("Escriba BORRAR") === "BORRAR") {
         await descargarBaseDatosExcel();
         await _supabase.rpc('vaciar_tabla_bingo');
+        await registrarLog("Vaciar tabla de cartones", "Se vació TODA la tabla de registros_bingo de este cliente");
         alert("Base de datos limpia.");
         cargarMetricasDelSistema();
       }
@@ -795,6 +814,7 @@
       let nuevoCodigo = document.getElementById("inputCodigoAdmin").value.trim().toUpperCase();
       if (!nuevoCodigo) return;
       await _supabase.from('configuracion_sistema').upsert({ tenant_id: window.MI_TENANT_ID, clave: 'codigo_canal_whatsapp', valor: nuevoCodigo }, { onConflict: 'tenant_id,clave' });
+      await registrarLog("Actualizar código de canal", "Se cambió el código secreto de WhatsApp");
       alert(`¡Éxito! El código se actualizó a "${nuevoCodigo}".`);
     }
 
@@ -870,6 +890,7 @@ async function guardarConfiguracionGlobalTable() {
     const permitirManual = document.getElementById("chkPermitirManual").checked;
     await _supabase.from('configuracion').update({ permitir_manual: permitirManual }).eq('tenant_id', window.MI_TENANT_ID);
 
+    await registrarLog("Actualizar parámetros globales", `Límite: ${limCartones}, QR: ${carQr}, Cierre: ${fechaCierre}, Manual: ${permitirManual}`);
     alert("🎉 ¡Parámetros globales actualizados con éxito directamente en el servidor!");
     
   } catch (err) {
@@ -887,6 +908,60 @@ async function guardarConfiguracionGlobalTable() {
    Suspender / reactivar se hace directo en la tabla "perfiles" (RLS lo permite
    porque el que llama ya es admin).
    ========================================================================= */
+
+let ULTIMO_HISTORIAL_ADMIN = [];
+
+async function cargarHistorialAdmin() {
+  try {
+    const { data, error } = await _supabase
+      .from('logs_auditoria')
+      .select('*')
+      .eq('tenant_id', window.MI_TENANT_ID)
+      .order('creado_en', { ascending: false })
+      .limit(300);
+
+    if (error) throw error;
+    ULTIMO_HISTORIAL_ADMIN = data || [];
+
+    const tbody = document.querySelector("#tablaHistorialAdmin tbody");
+    if (!data || data.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#999;">Todavía no hay historial</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = data.map(l => `
+      <tr>
+        <td>${new Date(l.creado_en).toLocaleString('es-EC')}</td>
+        <td>${l.actor_correo || '—'}</td>
+        <td>${l.accion}</td>
+        <td>${l.detalle || ''}</td>
+      </tr>`).join("");
+  } catch (err) {
+    console.error("Error cargando historial:", err.message);
+  }
+}
+
+function exportarHistorialExcel() {
+  if (ULTIMO_HISTORIAL_ADMIN.length === 0) { alert("No hay historial para exportar todavía."); return; }
+  const filas = ULTIMO_HISTORIAL_ADMIN.map(l => ({
+    "Fecha": new Date(l.creado_en).toLocaleString('es-EC'),
+    "Quién": l.actor_correo || '',
+    "Acción": l.accion,
+    "Detalle": l.detalle || ''
+  }));
+  const hoja = XLSX.utils.json_to_sheet(filas);
+  const libro = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(libro, hoja, "Historial");
+  XLSX.writeFile(libro, `historial_${(window.MI_TENANT_NOMBRE || 'cliente').toLowerCase().replace(/[^a-z0-9]+/g,'_')}_${Date.now()}.xlsx`);
+}
+
+async function registrarLog(accion, detalle) {
+  try {
+    await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: accion, p_detalle: detalle });
+  } catch (e) {
+    console.error("No se pudo registrar el log:", e.message);
+  }
+}
 
 async function llamarFuncionAdmin(accion, datosExtra) {
   const { data: { session } } = await _supabase.auth.getSession();
@@ -954,6 +1029,7 @@ async function crearUsuarioNuevo() {
     const resultado = await llamarFuncionAdmin("crear_usuario", { correo, clave, nombre, rol });
     if (resultado.error) { alert("❌ " + resultado.error); return; }
 
+    await registrarLog("Crear vendedor", `Vendedor "${nombre}" (${correo}) creado`);
     alert(`✅ Usuario creado. Comparte estas credenciales con la persona:\n\nCorreo: ${correo}\nContraseña: ${clave}`);
     document.getElementById("nuevoUsuarioCorreo").value = "";
     document.getElementById("nuevoUsuarioNombre").value = "";
@@ -983,6 +1059,7 @@ async function editarDatosUsuario(userId, correoActual, nombreActual) {
   try {
     const resultado = await llamarFuncionAdmin("actualizar_datos_usuario", { userId, ...cambios });
     if (resultado.error) { alert("❌ " + resultado.error); return; }
+    await registrarLog("Editar datos de usuario", `Usuario ${correoActual} → ${JSON.stringify(cambios)}`);
     alert("✅ Datos actualizados con éxito.");
     cargarUsuarios();
   } catch (err) {
@@ -999,6 +1076,7 @@ async function alternarSuspension(userId, estabaActivo) {
   try {
     const { error } = await _supabase.from('perfiles').update({ activo: !estabaActivo }).eq('id', userId);
     if (error) throw error;
+    await registrarLog(estabaActivo ? "Suspender usuario" : "Reactivar usuario", `Usuario ID ${userId}`);
     cargarUsuarios();
   } catch (err) {
     alert("❌ Error: " + err.message);
@@ -1013,6 +1091,7 @@ async function resetearClaveUsuario(userId, correo) {
   try {
     const resultado = await llamarFuncionAdmin("resetear_clave", { userId, claveNueva });
     if (resultado.error) { alert("❌ " + resultado.error); return; }
+    await registrarLog("Resetear contraseña de usuario", `Se reseteó la contraseña de ${correo}`);
     alert(`✅ Contraseña actualizada. Compártele a ${correo} su nueva contraseña temporal:\n\n${claveNueva}`);
   } catch (err) {
     alert("❌ Error: " + err.message);
@@ -1026,6 +1105,7 @@ async function eliminarUsuarioDefinitivo(userId, correo) {
   try {
     const resultado = await llamarFuncionAdmin("eliminar_usuario", { userId });
     if (resultado.error) { alert("❌ " + resultado.error); return; }
+    await registrarLog("Eliminar usuario", `Se eliminó la cuenta de ${correo}`);
     alert("✅ Usuario eliminado.");
     cargarUsuarios();
   } catch (err) {
