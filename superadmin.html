@@ -45,6 +45,7 @@
   <script src="conexion.js"></script>
   <script src="auth.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 </head>
@@ -191,6 +192,49 @@
     </div>
 
     <div class="seccion">
+      <h3>🗂️ Log de Auditoría General</h3>
+      <p style="font-size:0.85rem; color:#7f8c8d; margin-top:-5px;">Registro de todo lo que ha pasado en el sistema: quién vendió un plan, quién creó/suspendió a alguien, quién cambió qué.</p>
+
+      <div class="grid-parametros">
+        <div class="grupo-input">
+          <label for="filtroLogDesde">Desde:</label>
+          <input type="date" id="filtroLogDesde">
+        </div>
+        <div class="grupo-input">
+          <label for="filtroLogHasta">Hasta:</label>
+          <input type="date" id="filtroLogHasta">
+        </div>
+        <div class="grupo-input">
+          <label for="filtroLogTenant">Cliente:</label>
+          <select id="filtroLogTenant"><option value="">Todos</option></select>
+        </div>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:15px;">
+        <button onclick="cargarLogsAuditoria()">🔍 Filtrar</button>
+        <button style="background:#27ae60;" onclick="exportarLogsExcel()">🟢 Exportar a Excel</button>
+      </div>
+
+      <div class="table-container" style="max-height:400px; overflow-y:auto;">
+        <table id="tablaLogs">
+          <thead><tr><th>Fecha</th><th>Cliente</th><th>Quién</th><th>Acción</th><th>Detalle</th></tr></thead>
+          <tbody><tr><td colspan="5" style="text-align:center; color:#999;">Cargando...</td></tr></tbody>
+        </table>
+      </div>
+
+      <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
+
+      <h4>🗑️ Eliminar Logs Antiguos (con respaldo automático)</h4>
+      <p style="font-size:0.8rem; color:#7f8c8d;">Nunca se pueden eliminar logs de los últimos 15 días. Antes de borrar, se descarga automáticamente un Excel con todo lo que se va a eliminar.</p>
+      <div class="grid-parametros">
+        <div class="grupo-input">
+          <label for="fechaLimiteBorrado">Eliminar todo lo anterior a:</label>
+          <input type="date" id="fechaLimiteBorrado">
+        </div>
+      </div>
+      <button style="background:#e74c3c;" onclick="eliminarLogsAntiguos()">🗑️ Eliminar Logs (con respaldo)</button>
+    </div>
+
+    <div class="seccion">
       <h3>📋 Todos tus Clientes</h3>
       <div class="table-container">
         <table id="tablaTenants">
@@ -209,6 +253,51 @@
       </div>
     </div>
 
+    <div class="seccion">
+      <h3>📜 Log de Auditoría General</h3>
+      <p style="font-size:0.85rem; color:#7f8c8d; margin-top:-5px;">Todo lo que se hace en el sistema queda registrado aquí: quién, qué, cuándo y a qué cliente afectó.</p>
+
+      <div class="grid-parametros">
+        <div class="grupo-input">
+          <label for="filtroLogTenant">Filtrar por cliente:</label>
+          <select id="filtroLogTenant"><option value="">Todos</option></select>
+        </div>
+        <div class="grupo-input">
+          <label for="filtroLogDesde">Desde:</label>
+          <input type="date" id="filtroLogDesde">
+        </div>
+        <div class="grupo-input">
+          <label for="filtroLogHasta">Hasta:</label>
+          <input type="date" id="filtroLogHasta">
+        </div>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:15px;">
+        <button onclick="cargarLogsAuditoria()">🔍 Filtrar</button>
+        <button style="background:#2980b9;" onclick="exportarLogsExcel()">🟢 Exportar a Excel</button>
+      </div>
+
+      <div class="table-container">
+        <table id="tablaLogs">
+          <thead><tr><th>Fecha</th><th>Cliente</th><th>Quién</th><th>Acción</th><th>Detalle</th></tr></thead>
+          <tbody><tr><td colspan="5" style="text-align:center; color:#999;">Cargando...</td></tr></tbody>
+        </table>
+      </div>
+
+      <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
+
+      <h4>🗑️ Eliminar logs antiguos</h4>
+      <p style="font-size:0.8rem; color:#7f8c8d;">
+        Por seguridad, nunca se pueden eliminar logs de los últimos 15 días. Antes de eliminar,
+        se descarga automáticamente un respaldo en Excel con los logs que se van a borrar.
+      </p>
+      <div style="display:flex; gap:10px; align-items:end; flex-wrap:wrap;">
+        <div class="grupo-input">
+          <label for="fechaLimiteBorrado">Eliminar logs anteriores o iguales a:</label>
+          <input type="date" id="fechaLimiteBorrado">
+        </div>
+        <button style="background:#c0392b;" onclick="eliminarLogsAntiguos()">🗑️ Respaldar y Eliminar</button>
+      </div>
+    </div>
   </main>
 
   <script>
@@ -222,6 +311,8 @@
       await cargarTenants();
       await cargarPlanes();
       await cargarReporteMetricas();
+      await llenarFiltroLogTenants();
+      await cargarLogsAuditoria();
     });
 
     async function cargarTenants() {
@@ -322,6 +413,7 @@
       try {
         const { error } = await _supabase.from('planes').insert({ nombre, duracion_dias: dias, precio });
         if (error) throw error;
+        await registrarLog(null, "Crear plan", `Plan "${nombre}" (${dias} días, $${precio.toFixed(2)})`);
         document.getElementById("nuevoPlanNombre").value = "";
         document.getElementById("nuevoPlanDias").value = "";
         document.getElementById("nuevoPlanPrecio").value = "";
@@ -337,6 +429,7 @@
       try {
         const { error } = await _supabase.from('planes').delete().eq('id', id);
         if (error) throw error;
+        await registrarLog(null, "Eliminar plan", `Plan "${nombre}"`);
         await cargarPlanes();
       } catch (err) {
         if (err.message.includes("foreign key") || err.code === "23503") {
@@ -362,6 +455,7 @@
 
         // Crea también la fila de configuración inicial para ese tenant
         await _supabase.from('configuracion').insert({ tenant_id: data.id, limite_cartones: 5, caracteres_qr: 6, fecha_cierre: new Date(Date.now() + 30*24*60*60*1000).toISOString() });
+        await registrarLog(data.id, "Crear cliente", `Cliente "${nombre}" creado con slug "${slug}"`);
 
         alert(`✅ Cliente "${nombre}" creado. URL: ${BASE_URL_ACTUAL}${slug}`);
         document.getElementById("nuevoSlug").value = "";
@@ -388,6 +482,7 @@
       try {
         const resultado = await llamarFuncionAdmin("crear_usuario", { correo, clave, nombre, rol: "admin", tenant_id });
         if (resultado.error) { alert("❌ " + resultado.error); return; }
+        await registrarLog(tenant_id, "Crear administrador", `Admin "${nombre}" (${correo}) creado`);
         alert(`✅ Administrador creado.\n\nCorreo: ${correo}\nContraseña: ${clave}\n\nCompártelas con el cliente.`);
         document.getElementById("correoNuevoAdmin").value = "";
         document.getElementById("nombreNuevoAdmin").value = "";
@@ -408,6 +503,8 @@
       try {
         const { error } = await _supabase.rpc('vender_plan', { p_tenant_id: tenant_id, p_plan_id: plan_id });
         if (error) throw error;
+        const nombrePlan = document.getElementById("planElegido").selectedOptions[0]?.text || plan_id;
+        await registrarLog(tenant_id, "Vender/Renovar plan", `Se vendió/renovó el plan: ${nombrePlan}`);
         alert("✅ Plan aplicado correctamente.");
         await cargarTenants();
       } catch (err) {
@@ -451,6 +548,8 @@
 
         if (errUpdate) throw errUpdate;
 
+        await registrarLog(tenant_id, "Ajustar días de suscripción", `Se ${verbo === 'restar' ? 'restaron' : 'sumaron'} ${dias} día(s). Nueva fecha: ${nuevaFecha.toLocaleDateString('es-EC')}`);
+
         alert(`✅ Listo. Nueva fecha de vencimiento: ${nuevaFecha.toLocaleDateString('es-EC')}`);
         document.getElementById("diasAjuste").value = "";
         await cargarTenants();
@@ -479,6 +578,7 @@
       try {
         const { error } = await _supabase.from('tenants').update(cambios).eq('id', tenantId);
         if (error) throw error;
+        await registrarLog(tenantId, "Editar cliente", `Cambios: ${JSON.stringify(cambios)}`);
         alert("✅ Cliente actualizado con éxito.");
         await cargarTenants();
       } catch (err) {
@@ -497,6 +597,7 @@
       try {
         const { error } = await _supabase.from('tenants').update({ activo: !estabaActivo }).eq('id', tenantId);
         if (error) throw error;
+        await registrarLog(tenantId, estabaActivo ? "Suspender cliente" : "Reactivar cliente", "");
         await cargarTenants();
       } catch (err) {
         alert("❌ Error: " + err.message);
@@ -535,6 +636,7 @@
 
         const resultado = await llamarFuncionAdmin("resetear_clave", { userId: usuario.id, claveNueva });
         if (resultado.error) { alert("❌ " + resultado.error); return; }
+        await registrarLog(tenantId, "Resetear contraseña", `Se reseteó la contraseña de ${usuario.correo}`);
         alert(`✅ Contraseña de ${usuario.correo} actualizada a: ${claveNueva}`);
 
       } else if (opcion === "2") {
@@ -551,7 +653,16 @@
 
         const resultado = await llamarFuncionAdmin("actualizar_datos_usuario", { userId: usuario.id, ...cambios });
         if (resultado.error) { alert("❌ " + resultado.error); return; }
+        await registrarLog(tenantId, "Editar datos de admin", `Usuario ${usuario.correo} → ${JSON.stringify(cambios)}`);
         alert("✅ Datos actualizados con éxito.");
+      }
+    }
+
+    async function registrarLog(tenantId, accion, detalle) {
+      try {
+        await _supabase.rpc('registrar_log', { p_tenant_id: tenantId, p_accion: accion, p_detalle: detalle });
+      } catch (e) {
+        console.error("No se pudo registrar el log:", e.message);
       }
     }
 
@@ -721,6 +832,122 @@
       });
 
       doc.save(`reporte_clientes_tubingo_${Date.now()}.pdf`);
+    }
+
+    /* =========================================================================
+       LOG DE AUDITORÍA GENERAL
+       ========================================================================= */
+    let ULTIMOS_LOGS_CARGADOS = [];
+
+    async function llenarFiltroLogTenants() {
+      const opciones = TENANTS_CACHE.map(t => `<option value="${t.id}">${t.nombre}</option>`).join("");
+      document.getElementById("filtroLogTenant").innerHTML = `<option value="">Todos</option>` + opciones;
+    }
+
+    async function cargarLogsAuditoria() {
+      try {
+        let consulta = _supabase.from('logs_auditoria').select('*').order('creado_en', { ascending: false }).limit(500);
+
+        const tenantFiltro = document.getElementById("filtroLogTenant").value;
+        const desde = document.getElementById("filtroLogDesde").value;
+        const hasta = document.getElementById("filtroLogHasta").value;
+
+        if (tenantFiltro) consulta = consulta.eq('tenant_id', tenantFiltro);
+        if (desde) consulta = consulta.gte('creado_en', desde + "T00:00:00");
+        if (hasta) consulta = consulta.lte('creado_en', hasta + "T23:59:59");
+
+        const { data, error } = await consulta;
+        if (error) throw error;
+
+        ULTIMOS_LOGS_CARGADOS = data || [];
+
+        const tbody = document.querySelector("#tablaLogs tbody");
+        if (!data || data.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#999;">No hay logs con esos filtros</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = data.map(l => `
+          <tr>
+            <td>${new Date(l.creado_en).toLocaleString('es-EC')}</td>
+            <td>${l.tenant_slug || '—'}</td>
+            <td>${l.actor_correo || '—'}</td>
+            <td>${l.accion}</td>
+            <td>${l.detalle || ''}</td>
+          </tr>`).join("");
+      } catch (err) {
+        alert("❌ Error cargando logs: " + err.message);
+      }
+    }
+
+    function construirLibroExcelDeLogs(logs) {
+      const filas = logs.map(l => ({
+        "Fecha": new Date(l.creado_en).toLocaleString('es-EC'),
+        "Cliente (Slug)": l.tenant_slug || '',
+        "Quién": l.actor_correo || '',
+        "Acción": l.accion,
+        "Detalle": l.detalle || ''
+      }));
+      const hoja = XLSX.utils.json_to_sheet(filas);
+      const libro = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(libro, hoja, "Logs");
+      return libro;
+    }
+
+    function exportarLogsExcel() {
+      if (ULTIMOS_LOGS_CARGADOS.length === 0) { alert("No hay logs para exportar con los filtros actuales."); return; }
+      const libro = construirLibroExcelDeLogs(ULTIMOS_LOGS_CARGADOS);
+      XLSX.writeFile(libro, `logs_auditoria_${Date.now()}.xlsx`);
+    }
+
+    async function eliminarLogsAntiguos() {
+      const fechaLimite = document.getElementById("fechaLimiteBorrado").value;
+      if (!fechaLimite) { alert("Elige una fecha límite."); return; }
+
+      const limiteMinimo = new Date();
+      limiteMinimo.setDate(limiteMinimo.getDate() - 15);
+      if (new Date(fechaLimite) > limiteMinimo) {
+        alert("❌ No se pueden eliminar logs de los últimos 15 días. Elige una fecha más antigua.");
+        return;
+      }
+
+      if (!confirm(`Se descargará un respaldo en Excel y luego se eliminarán todos los logs hasta el ${fechaLimite} (inclusive). ¿Continuar?`)) return;
+
+      document.getElementById("mainPanel").classList.add("loading");
+      try {
+        const fechaLimiteISO = fechaLimite + "T23:59:59";
+        const { data: logsEliminados, error } = await _supabase.rpc('eliminar_logs_antiguos', { p_fecha_limite: fechaLimiteISO });
+        if (error) throw error;
+
+        if (!logsEliminados || logsEliminados.length === 0) {
+          alert("No había logs anteriores a esa fecha. No se eliminó nada.");
+          return;
+        }
+
+        // Respaldo en Excel de lo que se acaba de borrar, con la fecha de descarga
+        const libro = construirLibroExcelDeLogs(logsEliminados);
+        const fechaDescarga = new Date().toLocaleString('es-EC').replace(/[/:]/g, '-');
+        const hojaResumen = XLSX.utils.aoa_to_sheet([
+          ["Respaldo de logs eliminados"],
+          ["Fecha de esta descarga:", new Date().toLocaleString('es-EC')],
+          ["Logs desde:", logsEliminados.length > 0 ? new Date(Math.min(...logsEliminados.map(l => new Date(l.creado_en)))).toLocaleString('es-EC') : ''],
+          ["Logs hasta:", fechaLimite],
+          ["Cantidad de logs eliminados:", logsEliminados.length]
+        ]);
+        XLSX.utils.book_append_sheet(libro, hojaResumen, "Resumen");
+
+        XLSX.writeFile(libro, `respaldo_logs_eliminados_${Date.now()}.xlsx`);
+
+        await registrarLog(null, "Eliminar logs antiguos", `Se eliminaron ${logsEliminados.length} log(s) hasta ${fechaLimite}`);
+
+        alert(`✅ Se respaldaron y eliminaron ${logsEliminados.length} log(s).`);
+        document.getElementById("fechaLimiteBorrado").value = "";
+        await cargarLogsAuditoria();
+      } catch (err) {
+        alert("❌ Error: " + err.message);
+      } finally {
+        document.getElementById("mainPanel").classList.remove("loading");
+      }
     }
   </script>
 </body>
