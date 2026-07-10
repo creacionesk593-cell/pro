@@ -57,7 +57,19 @@
         Mostrar el tablero a los participantes (si está apagado, ven "Esperando inicio del juego")
       </label>
       <p style="font-size:0.85rem; color:#7f8c8d;">Toca un número para marcarlo — se muestra al instante en la pantalla pública. Tócalo de nuevo para deshacer un error.</p>
+      <button class="accion" style="background:#e74c3c;" onclick="reiniciarPartida()">🔄 Reiniciar Partida (vaciar todos los números)</button>
       <div class="grid-numeros" id="gridNumeros"></div>
+    </div>
+
+    <div class="seccion">
+      <h3>🏆 Juegos / Figuras de esta partida (hasta 20)</h3>
+      <p style="font-size:0.85rem; color:#7f8c8d;">Agrega cada juego (ej: "Juego A", "Locos", "Cometa") y márcalo como "Ya no disponible" cuando se termine, para que tus participantes lo vean reflejado al instante.</p>
+      <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
+        <input type="text" id="nuevoJuegoNombre" placeholder="Nombre del juego" style="flex:1; min-width:160px; padding:8px; border:1px solid #ccc; border-radius:6px;">
+        <input type="number" id="nuevoJuegoPrecio" placeholder="Precio (opcional)" min="0" step="0.01" style="width:140px; padding:8px; border:1px solid #ccc; border-radius:6px;">
+        <button class="accion" style="margin:0; width:auto;" onclick="agregarJuego()">➕ Agregar</button>
+      </div>
+      <div id="listaJuegos"></div>
     </div>
 
     <div class="seccion">
@@ -101,10 +113,17 @@
       construirGridNumeros();
       construirSlotsCamaras();
       await cargarTablero();
+      await cargarJuegos();
 
       _supabase.channel('tablero_admin_' + window.MI_TENANT_ID)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'tablero_bingo', filter: `tenant_id=eq.${window.MI_TENANT_ID}` }, (payload) => {
           if (payload.new) { TABLERO_ACTUAL = payload.new; pintarEstado(); }
+        })
+        .subscribe();
+
+      _supabase.channel('juegos_admin_' + window.MI_TENANT_ID)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tablero_juegos', filter: `tenant_id=eq.${window.MI_TENANT_ID}` }, () => {
+          cargarJuegos();
         })
         .subscribe();
     });
@@ -227,6 +246,79 @@
       const input = document.getElementById("linkPublico");
       input.select();
       navigator.clipboard.writeText(input.value).then(() => alert("✅ Enlace copiado."));
+    }
+
+    async function reiniciarPartida() {
+      if (!confirm("¿Reiniciar la partida? Esto vacía TODOS los números marcados para empezar un juego nuevo desde cero.")) return;
+
+      const { error } = await _supabase.from('tablero_bingo').update({ numeros_marcados: [], actualizado_en: new Date().toISOString() }).eq('tenant_id', window.MI_TENANT_ID);
+      if (error) { alert("❌ " + error.message); return; }
+
+      TABLERO_ACTUAL.numeros_marcados = [];
+      pintarEstado();
+      alert("✅ Partida reiniciada. Puedes empezar a marcar números del juego nuevo.");
+
+      try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Reiniciar partida del tablero", p_detalle: "Se vaciaron todos los números marcados" }); } catch(e) {}
+    }
+
+    /* =========================================================================
+       GESTIÓN DE JUEGOS / FIGURAS (hasta 20)
+       ========================================================================= */
+    async function cargarJuegos() {
+      const { data, error } = await _supabase.from('tablero_juegos').select('*').eq('tenant_id', window.MI_TENANT_ID).order('orden', { ascending: true });
+      if (error) { console.error(error.message); return; }
+
+      const cont = document.getElementById("listaJuegos");
+      if (!data || data.length === 0) {
+        cont.innerHTML = `<p style="color:#999; font-size:0.85rem;">Todavía no has agregado ningún juego.</p>`;
+        return;
+      }
+
+      cont.innerHTML = data.map(j => `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; border:1px solid #eee; border-radius:6px; margin-bottom:8px; ${j.disponible ? '' : 'opacity:0.6;'}">
+          <div>
+            <strong>${j.nombre}</strong>
+            ${j.precio > 0 ? ` — $${Number(j.precio).toFixed(2)}` : ''}
+            ${!j.disponible ? ' <span style="color:#e74c3c; font-weight:bold;">(YA NO DISPONIBLE)</span>' : ''}
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button class="accion" style="margin:0; padding:6px 10px; font-size:0.8rem; background:${j.disponible ? '#e74c3c' : '#2ecc71'};" onclick="alternarDisponibilidadJuego(${j.id}, ${j.disponible})">
+              ${j.disponible ? 'Marcar No Disponible' : 'Reactivar'}
+            </button>
+            <button class="accion" style="margin:0; padding:6px 10px; font-size:0.8rem; background:#95a5a6;" onclick="eliminarJuego(${j.id})">Eliminar</button>
+          </div>
+        </div>`).join("");
+    }
+
+    async function agregarJuego() {
+      const nombre = document.getElementById("nuevoJuegoNombre").value.trim();
+      const precio = parseFloat(document.getElementById("nuevoJuegoPrecio").value) || 0;
+      if (!nombre) { alert("Escribe el nombre del juego."); return; }
+
+      const { count } = await _supabase.from('tablero_juegos').select('id', { count: 'exact', head: true }).eq('tenant_id', window.MI_TENANT_ID);
+      if ((count || 0) >= 20) { alert("Ya tienes 20 juegos creados (el máximo). Elimina alguno para agregar otro."); return; }
+
+      const { error } = await _supabase.from('tablero_juegos').insert({ tenant_id: window.MI_TENANT_ID, nombre, precio, orden: count || 0 });
+      if (error) { alert("❌ " + error.message); return; }
+
+      document.getElementById("nuevoJuegoNombre").value = "";
+      document.getElementById("nuevoJuegoPrecio").value = "";
+      await cargarJuegos();
+      try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Agregar juego al tablero", p_detalle: nombre }); } catch(e) {}
+    }
+
+    async function alternarDisponibilidadJuego(id, estabaDisponible) {
+      const { error } = await _supabase.from('tablero_juegos').update({ disponible: !estabaDisponible }).eq('id', id);
+      if (error) { alert("❌ " + error.message); return; }
+      await cargarJuegos();
+      try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: estabaDisponible ? "Marcar juego no disponible" : "Reactivar juego", p_detalle: `ID juego: ${id}` }); } catch(e) {}
+    }
+
+    async function eliminarJuego(id) {
+      if (!confirm("¿Eliminar este juego de la lista?")) return;
+      const { error } = await _supabase.from('tablero_juegos').delete().eq('id', id);
+      if (error) { alert("❌ " + error.message); return; }
+      await cargarJuegos();
     }
   </script>
 </body>
