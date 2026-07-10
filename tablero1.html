@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Tablero en Vivo - TuBingo Pro</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #0f172a; color: white; min-height: 100vh; }
+    #contenedorPrincipal { display: flex; min-height: 100vh; }
+    #contenedorPrincipal.horizontal { flex-direction: column; }
+    #contenedorPrincipal.vertical-derecha { flex-direction: row; }
+    #contenedorPrincipal.vertical-izquierda { flex-direction: row-reverse; }
+
+    #zonaTablero { flex: 1; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+    #zonaCamaras { display: flex; gap: 10px; padding: 15px; flex-wrap: wrap; justify-content: center; }
+    .horizontal #zonaCamaras { flex-direction: row; }
+    .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras { flex-direction: column; width: 320px; }
+
+    .cam-box { background: black; border-radius: 8px; overflow: hidden; width: 280px; height: 200px; display: flex; align-items: center; justify-content: center; }
+    .cam-box video, .cam-box iframe { width: 100%; height: 100%; border: none; object-fit: cover; }
+
+    #numeroActual { font-size: 5rem; font-weight: bold; text-align: center; margin: 10px 0; padding: 10px 30px; border-radius: 12px; background: #e67e22; animation: parpadeo 1s infinite; }
+    @keyframes parpadeo { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+    #ultimos5 { display: flex; gap: 10px; margin-bottom: 15px; }
+    .chip-ultimo { background: #34495e; padding: 8px 14px; border-radius: 20px; font-weight: bold; }
+
+    .columna-letra { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .cabecera-letra { font-size: 1.6rem; font-weight: bold; background: #1e293b; width: 100%; text-align: center; padding: 6px; border-radius: 6px; }
+    #grillaBingo { display: flex; gap: 8px; margin-top: 10px; }
+    .num-celda { width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: #1e293b; font-weight: bold; }
+    .num-celda.marcado { background: #2ecc71; color: #0f172a; }
+
+    #mensajeEspera { font-size: 1.8rem; text-align: center; margin-top: 15%; opacity: 0.8; }
+  </style>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="conexion.js"></script>
+</head>
+<body>
+  <div id="contenedorPrincipal" class="horizontal">
+    <div id="zonaTablero">
+      <div id="mensajeEspera" style="display:none;">⏳ Esperando inicio del juego...</div>
+      <div id="contenidoTablero" style="display:none; width:100%;">
+        <div id="numeroActual">--</div>
+        <div id="ultimos5"></div>
+        <div id="grillaBingo"></div>
+      </div>
+    </div>
+    <div id="zonaCamaras"></div>
+  </div>
+
+  <script>
+    const LETRAS = [
+      { letra: "B", desde: 1, hasta: 15 },
+      { letra: "I", desde: 16, hasta: 30 },
+      { letra: "N", desde: 31, hasta: 45 },
+      { letra: "G", desde: 46, hasta: 60 },
+      { letra: "O", desde: 61, hasta: 75 }
+    ];
+
+    let MI_TENANT_ID = null;
+
+    window.addEventListener('load', async () => {
+      const params = new URLSearchParams(window.location.search);
+      const slug = params.get("tenant");
+      if (!slug) { document.getElementById("mensajeEspera").style.display = "block"; document.getElementById("mensajeEspera").innerText = "Falta indicar el cliente (tenant) en el enlace."; return; }
+
+      const { data: tenant } = await _supabase.from('tenants').select('id').eq('slug', slug).maybeSingle();
+      if (!tenant) { document.getElementById("mensajeEspera").style.display = "block"; document.getElementById("mensajeEspera").innerText = "Cliente no encontrado."; return; }
+
+      MI_TENANT_ID = tenant.id;
+      construirGrilla();
+
+      const { data: tablero } = await _supabase.from('tablero_bingo').select('*').eq('tenant_id', MI_TENANT_ID).maybeSingle();
+      pintarTablero(tablero || {});
+
+      _supabase.channel('tablero_publico_' + MI_TENANT_ID)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tablero_bingo', filter: `tenant_id=eq.${MI_TENANT_ID}` }, (payload) => {
+          if (payload.new) pintarTablero(payload.new);
+        })
+        .subscribe();
+    });
+
+    function construirGrilla() {
+      const cont = document.getElementById("grillaBingo");
+      cont.innerHTML = LETRAS.map(col => {
+        let celdas = "";
+        for (let n = col.desde; n <= col.hasta; n++) celdas += `<div class="num-celda" id="pub-num-${n}">${n}</div>`;
+        return `<div class="columna-letra"><div class="cabecera-letra">${col.letra}</div>${celdas}</div>`;
+      }).join("");
+    }
+
+    function pintarTablero(tablero) {
+      const visible = !!tablero.visible_publico;
+      document.getElementById("mensajeEspera").style.display = visible ? "none" : "block";
+      document.getElementById("contenidoTablero").style.display = visible ? "block" : "none";
+      if (!visible) return;
+
+      const marcados = tablero.numeros_marcados || [];
+
+      document.querySelectorAll(".num-celda").forEach(el => el.classList.remove("marcado"));
+      marcados.forEach(n => document.getElementById("pub-num-" + n)?.classList.add("marcado"));
+
+      document.getElementById("numeroActual").innerText = marcados.length > 0 ? marcados[marcados.length - 1] : "--";
+
+      const ultimos = marcados.slice(-5).reverse();
+      document.getElementById("ultimos5").innerHTML = ultimos.map(n => `<div class="chip-ultimo">${n}</div>`).join("");
+
+      aplicarLayout(tablero.layout || 'horizontal', tablero.posicion_camara || 'derecha');
+      montarCamaras(tablero.camaras || []);
+    }
+
+    function aplicarLayout(layout, posicionCamara) {
+      const cont = document.getElementById("contenedorPrincipal");
+      cont.className = layout === 'vertical'
+        ? (posicionCamara === 'izquierda' ? 'vertical-izquierda' : 'vertical-derecha')
+        : 'horizontal';
+    }
+
+    let camarasYaMontadas = "";
+    function montarCamaras(camaras) {
+      const firma = JSON.stringify(camaras);
+      if (firma === camarasYaMontadas) return; // evita reiniciar la cámara local en cada actualización
+      camarasYaMontadas = firma;
+
+      const zona = document.getElementById("zonaCamaras");
+      zona.innerHTML = "";
+
+      camaras.filter(c => c.activa && c.tipo).forEach((cam, i) => {
+        const box = document.createElement("div");
+        box.className = "cam-box";
+        box.id = "camBox" + i;
+        zona.appendChild(box);
+
+        if (cam.tipo === "dispositivo") {
+          const video = document.createElement("video");
+          video.autoplay = true; video.muted = true; video.playsInline = true;
+          box.appendChild(video);
+          navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => { video.srcObject = stream; })
+            .catch(() => { box.innerHTML = '<span style="color:#999; font-size:0.8rem; padding:10px;">Sin acceso a la cámara de este dispositivo</span>'; });
+        } else if (cam.tipo === "enlace" && cam.url) {
+          const iframe = document.createElement("iframe");
+          iframe.src = cam.url;
+          iframe.allow = "camera; microphone; autoplay; fullscreen";
+          box.appendChild(iframe);
+        }
+      });
+    }
+  </script>
+</body>
+</html>

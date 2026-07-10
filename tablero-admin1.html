@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Control del Tablero - TuBingo Pro</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #f1f2f6; color: #2d3436; }
+    header { background: #2c3e50; color: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    main { padding: 20px; max-width: 1100px; margin: auto; }
+    .seccion { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 20px; }
+    .seccion h3 { margin-top: 0; border-bottom: 2px solid #f1f2f6; padding-bottom: 10px; }
+
+    .grid-numeros { display: grid; grid-template-columns: repeat(15, 1fr); gap: 6px; margin-top: 15px; }
+    .num-btn { padding: 10px 0; text-align: center; border-radius: 6px; border: 1px solid #ccc; background: white; cursor: pointer; font-weight: bold; font-size: 0.9rem; }
+    .num-btn.marcado { background: #2ecc71; color: white; border-color: #27ae60; }
+    .num-btn.actual { outline: 3px solid #e67e22; }
+
+    .grid-config { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; }
+    .grupo label { font-size: 0.85rem; font-weight: bold; display: block; margin-bottom: 5px; }
+    .grupo select, .grupo input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+
+    button.accion { padding: 10px 18px; background: #2ecc71; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 12px; }
+    .caja-link { display: flex; gap: 10px; align-items: center; background: #eafaf1; padding: 12px; border-radius: 6px; margin-top: 10px; }
+    .caja-link input { flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 6px; }
+
+    .cam-slot { border: 1px solid #eee; border-radius: 8px; padding: 12px; margin-top: 10px; }
+  </style>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="conexion.js"></script>
+  <script src="auth.js"></script>
+</head>
+<body>
+  <header>
+    <h2 style="margin:0;">🎙️ Control del Tablero en Vivo</h2>
+    <div>
+      <a href="admin.html" style="color:white; margin-right:15px;">⬅️ Volver al Panel</a>
+      <button onclick="cerrarSesion()" style="background:rgba(255,255,255,0.2); color:white; border:none; padding:8px 14px; border-radius:6px; cursor:pointer;">Salir</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="seccion">
+      <h3>Enlace público para tus participantes</h3>
+      <p style="font-size:0.85rem; color:#7f8c8d;">Comparte este enlace o muéstralo en la pantalla del evento. Se actualiza solo, en vivo, sin recargar.</p>
+      <div class="caja-link">
+        <input type="text" id="linkPublico" readonly>
+        <button class="accion" style="margin:0; width:auto;" onclick="copiarLink()">Copiar</button>
+        <button class="accion" style="margin:0; width:auto; background:#3498db;" onclick="window.open(document.getElementById('linkPublico').value, '_blank')">Abrir</button>
+      </div>
+    </div>
+
+    <div class="seccion">
+      <h3>🎲 Marcar Números</h3>
+      <label style="display:flex; align-items:center; gap:8px; font-weight:bold;">
+        <input type="checkbox" id="chkVisiblePublico" style="width:auto;" onchange="guardarVisibilidad()">
+        Mostrar el tablero a los participantes (si está apagado, ven "Esperando inicio del juego")
+      </label>
+      <p style="font-size:0.85rem; color:#7f8c8d;">Toca un número para marcarlo — se muestra al instante en la pantalla pública. Tócalo de nuevo para deshacer un error.</p>
+      <div class="grid-numeros" id="gridNumeros"></div>
+    </div>
+
+    <div class="seccion">
+      <h3>⚙️ Diseño del Tablero</h3>
+      <div class="grid-config">
+        <div class="grupo">
+          <label>Orientación:</label>
+          <select id="selLayout" onchange="guardarConfigTablero()">
+            <option value="horizontal">Horizontal (cámaras abajo)</option>
+            <option value="vertical">Vertical (cámaras al lado)</option>
+          </select>
+        </div>
+        <div class="grupo" id="grupoPosicionCamara">
+          <label>Lado de las cámaras (solo si es vertical):</label>
+          <select id="selPosicionCamara" onchange="guardarConfigTablero()">
+            <option value="derecha">Derecha</option>
+            <option value="izquierda">Izquierda</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="seccion">
+      <h3>📷 Cámaras / Transmisión (hasta 3)</h3>
+      <div id="contenedorCamaras"></div>
+      <button class="accion" onclick="guardarConfigTablero()">💾 Guardar Cámaras</button>
+    </div>
+  </main>
+
+  <script>
+    let TABLERO_ACTUAL = { numeros_marcados: [], visible_publico: false, layout: 'horizontal', posicion_camara: 'derecha', camaras: [] };
+
+    window.addEventListener('load', async () => {
+      const acceso = await requerirSesion('admin');
+      if (!acceso) return;
+
+      window.MI_TENANT_ID = acceso.perfil.tenant_id;
+      const slug = acceso.tenant ? acceso.tenant.slug : '';
+      document.getElementById("linkPublico").value = window.location.origin + window.location.pathname.replace('tablero-admin.html', 'tablero.html') + '?tenant=' + encodeURIComponent(slug);
+
+      construirGridNumeros();
+      construirSlotsCamaras();
+      await cargarTablero();
+
+      _supabase.channel('tablero_admin_' + window.MI_TENANT_ID)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tablero_bingo', filter: `tenant_id=eq.${window.MI_TENANT_ID}` }, (payload) => {
+          if (payload.new) { TABLERO_ACTUAL = payload.new; pintarEstado(); }
+        })
+        .subscribe();
+    });
+
+    function construirGridNumeros() {
+      const grid = document.getElementById("gridNumeros");
+      let html = "";
+      for (let n = 1; n <= 75; n++) {
+        html += `<div class="num-btn" id="num-${n}" onclick="alternarNumero(${n})">${n}</div>`;
+      }
+      grid.innerHTML = html;
+    }
+
+    function construirSlotsCamaras() {
+      const cont = document.getElementById("contenedorCamaras");
+      cont.innerHTML = "";
+      for (let i = 0; i < 3; i++) {
+        cont.innerHTML += `
+          <div class="cam-slot">
+            <strong>Cámara ${i + 1}</strong>
+            <div class="grid-config" style="margin-top:8px;">
+              <div class="grupo">
+                <label>Tipo:</label>
+                <select id="camTipo${i}">
+                  <option value="">— Desactivada —</option>
+                  <option value="dispositivo">Cámara de este dispositivo (webcam)</option>
+                  <option value="enlace">Enlace (OBS.Ninja, VDO.Ninja, YouTube, Facebook, etc.)</option>
+                </select>
+              </div>
+              <div class="grupo">
+                <label>Enlace (si aplica):</label>
+                <input type="text" id="camUrl${i}" placeholder="https://...">
+              </div>
+            </div>
+          </div>`;
+      }
+    }
+
+    async function cargarTablero() {
+      const { data, error } = await _supabase.from('tablero_bingo').select('*').eq('tenant_id', window.MI_TENANT_ID).maybeSingle();
+
+      if (!data) {
+        // Primera vez: crea la fila inicial para este cliente
+        const { data: creado } = await _supabase.from('tablero_bingo').insert({ tenant_id: window.MI_TENANT_ID }).select().single();
+        TABLERO_ACTUAL = creado;
+      } else {
+        TABLERO_ACTUAL = data;
+      }
+      pintarEstado();
+    }
+
+    function pintarEstado() {
+      document.querySelectorAll(".num-btn").forEach(el => el.classList.remove("marcado", "actual"));
+      const marcados = TABLERO_ACTUAL.numeros_marcados || [];
+      marcados.forEach(n => document.getElementById("num-" + n)?.classList.add("marcado"));
+      if (marcados.length > 0) {
+        document.getElementById("num-" + marcados[marcados.length - 1])?.classList.add("actual");
+      }
+
+      document.getElementById("chkVisiblePublico").checked = !!TABLERO_ACTUAL.visible_publico;
+      document.getElementById("selLayout").value = TABLERO_ACTUAL.layout || 'horizontal';
+      document.getElementById("selPosicionCamara").value = TABLERO_ACTUAL.posicion_camara || 'derecha';
+
+      const camaras = TABLERO_ACTUAL.camaras || [];
+      for (let i = 0; i < 3; i++) {
+        const cam = camaras[i] || {};
+        document.getElementById("camTipo" + i).value = cam.tipo || "";
+        document.getElementById("camUrl" + i).value = cam.url || "";
+      }
+    }
+
+    async function alternarNumero(n) {
+      let marcados = [...(TABLERO_ACTUAL.numeros_marcados || [])];
+      const yaEstaba = marcados.includes(n);
+
+      if (yaEstaba) {
+        marcados = marcados.filter(x => x !== n);
+      } else {
+        marcados.push(n);
+      }
+
+      const { error } = await _supabase.from('tablero_bingo').update({ numeros_marcados: marcados, actualizado_en: new Date().toISOString() }).eq('tenant_id', window.MI_TENANT_ID);
+      if (error) { alert("❌ " + error.message); return; }
+
+      TABLERO_ACTUAL.numeros_marcados = marcados;
+      pintarEstado();
+
+      try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: yaEstaba ? "Desmarcar número del tablero" : "Marcar número del tablero", p_detalle: `Número: ${n}` }); } catch(e) {}
+    }
+
+    async function guardarVisibilidad() {
+      const visible = document.getElementById("chkVisiblePublico").checked;
+      await _supabase.from('tablero_bingo').update({ visible_publico: visible }).eq('tenant_id', window.MI_TENANT_ID);
+      TABLERO_ACTUAL.visible_publico = visible;
+      try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Cambiar visibilidad del tablero", p_detalle: visible ? "Mostrado al público" : "Ocultado" }); } catch(e) {}
+    }
+
+    async function guardarConfigTablero() {
+      const layout = document.getElementById("selLayout").value;
+      const posicion_camara = document.getElementById("selPosicionCamara").value;
+
+      const camaras = [];
+      for (let i = 0; i < 3; i++) {
+        const tipo = document.getElementById("camTipo" + i).value;
+        const url = document.getElementById("camUrl" + i).value.trim();
+        camaras.push({ tipo, url, activa: !!tipo });
+      }
+
+      const { error } = await _supabase.from('tablero_bingo').update({ layout, posicion_camara, camaras }).eq('tenant_id', window.MI_TENANT_ID);
+      if (error) { alert("❌ " + error.message); return; }
+
+      TABLERO_ACTUAL.layout = layout;
+      TABLERO_ACTUAL.posicion_camara = posicion_camara;
+      TABLERO_ACTUAL.camaras = camaras;
+
+      try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Actualizar configuración del tablero", p_detalle: `Layout: ${layout}` }); } catch(e) {}
+    }
+
+    function copiarLink() {
+      const input = document.getElementById("linkPublico");
+      input.select();
+      navigator.clipboard.writeText(input.value).then(() => alert("✅ Enlace copiado."));
+    }
+  </script>
+</body>
+</html>
