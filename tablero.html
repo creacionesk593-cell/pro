@@ -31,6 +31,12 @@
     #grillaBingo { display: flex; gap: 8px; margin-top: 10px; }
     .num-celda { width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: #1e293b; font-weight: bold; }
     .num-celda.marcado { background: #2ecc71; color: #0f172a; }
+    .num-celda.ultimo { animation: parpadeo 1s infinite; background: #e67e22; color: white; }
+
+    #panelJuegos { margin-top: 20px; width: 100%; max-width: 500px; }
+    #panelJuegos h4 { text-align:center; margin-bottom:10px; }
+    .juego-chip { display:inline-block; padding:6px 12px; margin:4px; border-radius:20px; font-size:0.85rem; background:#1e293b; }
+    .juego-chip.no-disponible { background:#e74c3c; text-decoration:line-through; opacity:0.7; }
 
     #mensajeEspera { font-size: 1.8rem; text-align: center; margin-top: 15%; opacity: 0.8; }
   </style>
@@ -45,6 +51,7 @@
         <div id="numeroActual">--</div>
         <div id="ultimos5"></div>
         <div id="grillaBingo"></div>
+        <div id="panelJuegos"><h4>🏆 Juegos de esta partida</h4><div id="listaJuegosPublico"></div></div>
       </div>
     </div>
     <div id="zonaCamaras"></div>
@@ -75,12 +82,27 @@
       const { data: tablero } = await _supabase.from('tablero_bingo').select('*').eq('tenant_id', MI_TENANT_ID).maybeSingle();
       pintarTablero(tablero || {});
 
+      await cargarJuegosPublico();
+
       _supabase.channel('tablero_publico_' + MI_TENANT_ID)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'tablero_bingo', filter: `tenant_id=eq.${MI_TENANT_ID}` }, (payload) => {
           if (payload.new) pintarTablero(payload.new);
         })
         .subscribe();
+
+      _supabase.channel('juegos_publico_' + MI_TENANT_ID)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tablero_juegos', filter: `tenant_id=eq.${MI_TENANT_ID}` }, () => {
+          cargarJuegosPublico();
+        })
+        .subscribe();
     });
+
+    async function cargarJuegosPublico() {
+      const { data } = await _supabase.from('tablero_juegos').select('*').eq('tenant_id', MI_TENANT_ID).order('orden', { ascending: true });
+      const cont = document.getElementById("listaJuegosPublico");
+      if (!data || data.length === 0) { cont.innerHTML = ""; return; }
+      cont.innerHTML = data.map(j => `<span class="juego-chip ${j.disponible ? '' : 'no-disponible'}">${j.nombre}</span>`).join("");
+    }
 
     function construirGrilla() {
       const cont = document.getElementById("grillaBingo");
@@ -99,8 +121,11 @@
 
       const marcados = tablero.numeros_marcados || [];
 
-      document.querySelectorAll(".num-celda").forEach(el => el.classList.remove("marcado"));
+      document.querySelectorAll(".num-celda").forEach(el => el.classList.remove("marcado", "ultimo"));
       marcados.forEach(n => document.getElementById("pub-num-" + n)?.classList.add("marcado"));
+      if (marcados.length > 0) {
+        document.getElementById("pub-num-" + marcados[marcados.length - 1])?.classList.add("ultimo");
+      }
 
       document.getElementById("numeroActual").innerText = marcados.length > 0 ? marcados[marcados.length - 1] : "--";
 
