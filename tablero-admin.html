@@ -97,6 +97,10 @@
           <label>Color del número que parpadea:</label>
           <input type="color" id="colorParpadeo" onchange="guardarConfigTablero()">
         </div>
+        <div class="grupo">
+          <label>Tamaño de letra "Juegos de esta partida" (px):</label>
+          <input type="number" id="tamanoFuenteJuegos" min="10" max="40" onchange="guardarConfigTablero()">
+        </div>
       </div>
       <label style="display:flex; align-items:center; gap:8px; margin-top:15px; font-weight:bold;">
         <input type="checkbox" id="chkOcultarNoLlamados" style="width:auto;" onchange="guardarConfigTablero()">
@@ -203,6 +207,7 @@
       document.getElementById("selPosicionCamara").value = TABLERO_ACTUAL.posicion_camara || 'derecha';
       document.getElementById("colorMarcado").value = TABLERO_ACTUAL.color_marcado || '#2ecc71';
       document.getElementById("colorParpadeo").value = TABLERO_ACTUAL.color_parpadeo || '#e67e22';
+      document.getElementById("tamanoFuenteJuegos").value = TABLERO_ACTUAL.tamano_fuente_juegos || 16;
       document.getElementById("chkOcultarNoLlamados").checked = !!TABLERO_ACTUAL.ocultar_no_llamados;
 
       const camaras = TABLERO_ACTUAL.camaras || [];
@@ -245,6 +250,7 @@
       const color_marcado = document.getElementById("colorMarcado").value;
       const color_parpadeo = document.getElementById("colorParpadeo").value;
       const ocultar_no_llamados = document.getElementById("chkOcultarNoLlamados").checked;
+      const tamano_fuente_juegos = parseInt(document.getElementById("tamanoFuenteJuegos").value, 10) || 16;
 
       const camaras = [];
       for (let i = 0; i < 3; i++) {
@@ -253,7 +259,7 @@
         camaras.push({ tipo, url, activa: !!tipo });
       }
 
-      const { error } = await _supabase.from('tablero_bingo').update({ layout, posicion_camara, color_marcado, color_parpadeo, ocultar_no_llamados, camaras }).eq('tenant_id', window.MI_TENANT_ID);
+      const { error } = await _supabase.from('tablero_bingo').update({ layout, posicion_camara, color_marcado, color_parpadeo, ocultar_no_llamados, tamano_fuente_juegos, camaras }).eq('tenant_id', window.MI_TENANT_ID);
       if (error) { alert("❌ " + error.message); return; }
 
       TABLERO_ACTUAL.layout = layout;
@@ -261,6 +267,7 @@
       TABLERO_ACTUAL.color_marcado = color_marcado;
       TABLERO_ACTUAL.color_parpadeo = color_parpadeo;
       TABLERO_ACTUAL.ocultar_no_llamados = ocultar_no_llamados;
+      TABLERO_ACTUAL.tamano_fuente_juegos = tamano_fuente_juegos;
       TABLERO_ACTUAL.camaras = camaras;
 
       try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Actualizar configuración del tablero", p_detalle: `Layout: ${layout}` }); } catch(e) {}
