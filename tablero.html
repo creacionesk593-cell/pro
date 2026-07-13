@@ -41,7 +41,7 @@
 
     #panelJuegos { margin-top: 20px; width: 100%; max-width: 500px; }
     #panelJuegos h4 { text-align:center; margin-bottom:10px; }
-    .juego-chip { display:inline-block; padding:6px 12px; margin:4px; border-radius:20px; font-size:0.85rem; background:#1e293b; }
+    .juego-chip { display:inline-block; padding:6px 12px; margin:4px; border-radius:20px; font-size:inherit; background:#1e293b; }
     .juego-chip.no-disponible { background:#e74c3c; text-decoration:line-through; opacity:0.7; }
 
     #mensajeEspera { font-size: 1.8rem; text-align: center; margin-top: 15%; opacity: 0.8; }
@@ -103,9 +103,12 @@
         .subscribe();
     });
 
+    let TAMANO_FUENTE_JUEGOS = 16;
+
     async function cargarJuegosPublico() {
       const { data } = await _supabase.from('tablero_juegos').select('*').eq('tenant_id', MI_TENANT_ID).order('orden', { ascending: true });
       const cont = document.getElementById("listaJuegosPublico");
+      cont.style.fontSize = TAMANO_FUENTE_JUEGOS + "px";
       if (!data || data.length === 0) { cont.innerHTML = ""; return; }
       cont.innerHTML = data.map(j => `<span class="juego-chip ${j.disponible ? '' : 'no-disponible'}">${j.nombre}</span>`).join("");
     }
@@ -150,6 +153,10 @@
 
       document.getElementById("numeroActual").style.background = colorParpadeo;
 
+      TAMANO_FUENTE_JUEGOS = tablero.tamano_fuente_juegos || 16;
+      const contJuegos = document.getElementById("listaJuegosPublico");
+      if (contJuegos) contJuegos.style.fontSize = TAMANO_FUENTE_JUEGOS + "px";
+
       document.getElementById("numeroActual").innerText = marcados.length > 0 ? marcados[marcados.length - 1] : "--";
 
       const ultimos = marcados.slice(-5).reverse();
@@ -172,10 +179,14 @@
     function convertirUrlEmbebible(url) {
       if (!url) return url;
 
-      // YouTube: watch?v=ID / youtu.be/ID / live/ID  -> youtube.com/embed/ID
-      let m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/live\/)([a-zA-Z0-9_-]+)/);
+      // YouTube: watch?v=ID / youtu.be/ID / live/ID / shorts/ID -> youtube.com/embed/ID
+      let m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/live\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]+)/);
       if (m) return `https://www.youtube.com/embed/${m[1]}?autoplay=1&mute=1`;
       if (url.includes("youtube.com/embed/")) return url;
+
+      // Canal de YouTube en vivo (sin ID de video), ej: youtube.com/channel/UCxxxx/live
+      let mCanal = url.match(/youtube\.com\/channel\/([a-zA-Z0-9_-]+)\/live/);
+      if (mCanal) return `https://www.youtube.com/embed/live_stream?channel=${mCanal[1]}&autoplay=1&mute=1`;
 
       // Facebook: cualquier enlace de video/watch -> plugin de video embebible oficial
       if (url.includes("facebook.com") && !url.includes("plugins/video.php")) {
@@ -224,6 +235,14 @@
           iframe.src = convertirUrlEmbebible(cam.url);
           iframe.allow = "camera; microphone; autoplay; fullscreen";
           box.appendChild(iframe);
+
+          if (cam.url.includes("youtube.com") || cam.url.includes("youtu.be")) {
+            const aviso = document.createElement("div");
+            aviso.style.cssText = "position:absolute; bottom:2px; left:2px; right:2px; font-size:0.6rem; color:#f39c12; background:rgba(0,0,0,0.6); padding:2px 4px; border-radius:4px; text-align:center; pointer-events:none;";
+            aviso.innerText = "Si no carga: el dueño del video desactivó \"permitir insertar\" en YouTube, o el enlace no es válido.";
+            box.style.position = "relative";
+            box.appendChild(aviso);
+          }
         }
       });
     }
