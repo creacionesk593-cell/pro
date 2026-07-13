@@ -90,6 +90,20 @@
           </select>
         </div>
         <div class="grupo">
+          <label>Plantilla de cámaras:</label>
+          <select id="selPlantilla" onchange="guardarConfigTablero()">
+            <option value="clasica">Clásica (todas iguales)</option>
+            <option value="show">Estilo Show (cámara 1 grande, resto pequeñas arriba)</option>
+          </select>
+        </div>
+        <div class="grupo">
+          <label>Estilo de cuadrícula de números:</label>
+          <select id="selEstiloGrid" onchange="guardarConfigTablero()">
+            <option value="bingo">Columnas B-I-N-G-O (vertical)</option>
+            <option value="simple">Cuadrícula simple 1-75 (en fila, como cartilla clásica)</option>
+          </select>
+        </div>
+        <div class="grupo">
           <label>Color de números marcados:</label>
           <input type="color" id="colorMarcado" onchange="guardarConfigTablero()">
         </div>
@@ -205,6 +219,8 @@
       document.getElementById("chkVisiblePublico").checked = !!TABLERO_ACTUAL.visible_publico;
       document.getElementById("selLayout").value = TABLERO_ACTUAL.layout || 'horizontal';
       document.getElementById("selPosicionCamara").value = TABLERO_ACTUAL.posicion_camara || 'derecha';
+      document.getElementById("selPlantilla").value = TABLERO_ACTUAL.plantilla || 'clasica';
+      document.getElementById("selEstiloGrid").value = TABLERO_ACTUAL.estilo_grid || 'bingo';
       document.getElementById("colorMarcado").value = TABLERO_ACTUAL.color_marcado || '#2ecc71';
       document.getElementById("colorParpadeo").value = TABLERO_ACTUAL.color_parpadeo || '#e67e22';
       document.getElementById("tamanoFuenteJuegos").value = TABLERO_ACTUAL.tamano_fuente_juegos || 16;
@@ -247,6 +263,8 @@
     async function guardarConfigTablero() {
       const layout = document.getElementById("selLayout").value;
       const posicion_camara = document.getElementById("selPosicionCamara").value;
+      const plantilla = document.getElementById("selPlantilla").value;
+      const estilo_grid = document.getElementById("selEstiloGrid").value;
       const color_marcado = document.getElementById("colorMarcado").value;
       const color_parpadeo = document.getElementById("colorParpadeo").value;
       const ocultar_no_llamados = document.getElementById("chkOcultarNoLlamados").checked;
@@ -259,11 +277,13 @@
         camaras.push({ tipo, url, activa: !!tipo });
       }
 
-      const { error } = await _supabase.from('tablero_bingo').update({ layout, posicion_camara, color_marcado, color_parpadeo, ocultar_no_llamados, tamano_fuente_juegos, camaras }).eq('tenant_id', window.MI_TENANT_ID);
+      const { error } = await _supabase.from('tablero_bingo').update({ layout, posicion_camara, plantilla, estilo_grid, color_marcado, color_parpadeo, ocultar_no_llamados, tamano_fuente_juegos, camaras }).eq('tenant_id', window.MI_TENANT_ID);
       if (error) { alert("❌ " + error.message); return; }
 
       TABLERO_ACTUAL.layout = layout;
       TABLERO_ACTUAL.posicion_camara = posicion_camara;
+      TABLERO_ACTUAL.plantilla = plantilla;
+      TABLERO_ACTUAL.estilo_grid = estilo_grid;
       TABLERO_ACTUAL.color_marcado = color_marcado;
       TABLERO_ACTUAL.color_parpadeo = color_parpadeo;
       TABLERO_ACTUAL.ocultar_no_llamados = ocultar_no_llamados;
