@@ -6,31 +6,36 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     * { box-sizing: border-box; }
-    body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #0f172a; color: white; min-height: 100vh; }
-    #contenedorPrincipal { display: flex; min-height: 100vh; max-width: 1300px; margin: 0 auto; padding: 15px; gap: 25px; }
+    body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #0f172a; color: white; min-height: 100vh; overflow-x: hidden; }
+    #contenedorPrincipal { display: flex; min-height: 100vh; max-width: 1300px; margin: 0 auto; padding: 15px; gap: 25px; overflow-x: hidden; }
     #contenedorPrincipal.horizontal { flex-direction: column; align-items: center; justify-content: flex-start; }
-    #contenedorPrincipal.vertical-derecha { flex-direction: row; align-items: flex-start; justify-content: center; }
-    #contenedorPrincipal.vertical-izquierda { flex-direction: row-reverse; align-items: flex-start; justify-content: center; }
+    #contenedorPrincipal.vertical-derecha { flex-direction: row; align-items: flex-start; justify-content: center; flex-wrap: wrap; }
+    #contenedorPrincipal.vertical-izquierda { flex-direction: row-reverse; align-items: flex-start; justify-content: center; flex-wrap: wrap; }
 
-    #zonaTablero { flex: 0 1 auto; padding: 10px; display: flex; flex-direction: column; align-items: center; max-width: 100%; }
-    #zonaCamaras { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+    #zonaTablero { flex: 0 1 auto; padding: 10px; display: flex; flex-direction: column; align-items: center; max-width: 100%; min-width: 0; }
+    #zonaCamaras { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; max-width: 100%; }
     .horizontal #zonaCamaras { flex-direction: row; margin-top: 10px; }
-    .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras { flex-direction: column; width: 300px; flex-shrink: 0; }
+    .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras { flex-direction: column; width: 300px; flex-shrink: 0; max-width: 90vw; }
+
+    @media (max-width: 480px) {
+      #contenedorPrincipal { padding: 8px; gap: 12px; }
+      #zonaTablero { padding: 4px; }
+    }
 
     .cam-box { background: black; border-radius: 8px; overflow: hidden; width: 100%; max-width: 300px; aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; }
     .cam-box video, .cam-box iframe { width: 100%; height: 100%; border: none; object-fit: cover; }
     .cam-box span { font-size: 0.75rem; color: #999; padding: 10px; text-align: center; }
 
-    #numeroActual { font-size: 5rem; font-weight: bold; text-align: center; margin: 10px 0; padding: 10px 30px; border-radius: 12px; background: #e67e22; animation: parpadeo 1s infinite; }
+    #numeroActual { font-size: clamp(2.2rem, 10vw, 5rem); font-weight: bold; text-align: center; margin: 10px 0; padding: clamp(6px,2vw,10px) clamp(14px,5vw,30px); border-radius: 12px; background: #e67e22; animation: parpadeo 1s infinite; max-width: 90vw; }
     @keyframes parpadeo { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
 
-    #ultimos5 { display: flex; gap: 10px; margin-bottom: 15px; }
-    .chip-ultimo { background: #34495e; padding: 8px 14px; border-radius: 20px; font-weight: bold; }
+    #ultimos5 { display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap; justify-content: center; }
+    .chip-ultimo { background: #34495e; padding: 6px 12px; border-radius: 20px; font-weight: bold; font-size: clamp(0.75rem, 3vw, 1rem); }
 
-    .columna-letra { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-    .cabecera-letra { font-size: 1.6rem; font-weight: bold; background: #1e293b; width: 100%; text-align: center; padding: 6px; border-radius: 6px; }
-    #grillaBingo { display: flex; gap: 8px; margin-top: 10px; }
-    .num-celda { width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: #1e293b; font-weight: bold; }
+    .columna-letra { display: flex; flex-direction: column; align-items: center; gap: clamp(3px, 1vw, 6px); }
+    .cabecera-letra { font-size: clamp(1rem, 4.5vw, 1.6rem); font-weight: bold; background: #1e293b; width: 100%; text-align: center; padding: clamp(3px,1vw,6px); border-radius: 6px; }
+    #grillaBingo { display: flex; gap: clamp(3px, 1.2vw, 8px); margin-top: 10px; max-width: 100%; }
+    .num-celda { width: clamp(24px, 7.5vw, 45px); height: clamp(24px, 7.5vw, 45px); display: flex; align-items: center; justify-content: center; border-radius: 6px; background: #1e293b; font-weight: bold; font-size: clamp(0.6rem, 3vw, 0.95rem); }
     .num-celda.marcado { background: #2ecc71; color: #0f172a; }
     .num-celda.ultimo { animation: parpadeo 1s infinite; background: #e67e22; color: white; }
 
@@ -162,6 +167,25 @@
     }
 
     let camarasYaMontadas = "";
+    // Convierte enlaces normales de YouTube/Facebook a su versión "embebible"
+    // (los enlaces normales bloquean la incrustación por seguridad del sitio original)
+    function convertirUrlEmbebible(url) {
+      if (!url) return url;
+
+      // YouTube: watch?v=ID / youtu.be/ID / live/ID  -> youtube.com/embed/ID
+      let m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/live\/)([a-zA-Z0-9_-]+)/);
+      if (m) return `https://www.youtube.com/embed/${m[1]}?autoplay=1&mute=1`;
+      if (url.includes("youtube.com/embed/")) return url;
+
+      // Facebook: cualquier enlace de video/watch -> plugin de video embebible oficial
+      if (url.includes("facebook.com") && !url.includes("plugins/video.php")) {
+        return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&show_text=false&autoplay=true`;
+      }
+
+      // OBS.Ninja / VDO.Ninja / cualquier otro enlace: se usa tal cual, ya están diseñados para incrustarse
+      return url;
+    }
+
     function activarCamaraLocal(boton) {
       const box = boton.closest(".cam-box");
       box.innerHTML = "";
@@ -197,7 +221,7 @@
             </div>`;
         } else if (cam.tipo === "enlace" && cam.url) {
           const iframe = document.createElement("iframe");
-          iframe.src = cam.url;
+          iframe.src = convertirUrlEmbebible(cam.url);
           iframe.allow = "camera; microphone; autoplay; fullscreen";
           box.appendChild(iframe);
         }
