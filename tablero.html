@@ -7,19 +7,22 @@
   <style>
     * { box-sizing: border-box; }
     body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #0f172a; color: white; min-height: 100vh; overflow-x: hidden; }
-    #contenedorPrincipal { display: flex; min-height: 100vh; max-width: 1300px; margin: 0 auto; padding: 15px; gap: 25px; overflow-x: hidden; }
+    #contenedorPrincipal { display: flex; min-height: 100vh; max-width: 1300px; margin: 0 auto; padding: 15px; gap: 15px; overflow-x: hidden; }
     #contenedorPrincipal.horizontal { flex-direction: column; align-items: center; justify-content: flex-start; }
-    #contenedorPrincipal.vertical-derecha { flex-direction: row; align-items: flex-start; justify-content: center; flex-wrap: wrap; }
-    #contenedorPrincipal.vertical-izquierda { flex-direction: row-reverse; align-items: flex-start; justify-content: center; flex-wrap: wrap; }
+    #contenedorPrincipal.vertical-derecha { flex-direction: row; align-items: flex-start; justify-content: center; flex-wrap: nowrap; }
+    #contenedorPrincipal.vertical-izquierda { flex-direction: row-reverse; align-items: flex-start; justify-content: center; flex-wrap: nowrap; }
 
-    #zonaTablero { flex: 0 1 auto; padding: 10px; display: flex; flex-direction: column; align-items: center; max-width: 100%; min-width: 0; }
-    #zonaCamaras { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; max-width: 100%; }
+    #zonaTablero { flex: 1 1 auto; padding: 6px; display: flex; flex-direction: column; align-items: center; max-width: 100%; min-width: 0; }
+    #zonaCamaras { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; max-width: 100%; }
     .horizontal #zonaCamaras { flex-direction: row; margin-top: 10px; }
-    .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras { flex-direction: column; width: 300px; flex-shrink: 0; max-width: 90vw; }
+    .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras { flex-direction: column; flex: 0 1 220px; min-width: 90px; max-width: 260px; flex-shrink: 1; }
 
     @media (max-width: 480px) {
-      #contenedorPrincipal { padding: 8px; gap: 12px; }
-      #zonaTablero { padding: 4px; }
+      #contenedorPrincipal { padding: 6px; gap: 8px; }
+      #zonaTablero { padding: 2px; }
+      .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras { flex: 0 1 110px; min-width: 70px; }
+      .vertical-derecha .num-celda, .vertical-izquierda .num-celda { width: clamp(16px, 5.5vw, 32px) !important; height: clamp(16px, 5.5vw, 32px) !important; font-size: clamp(0.45rem, 2.2vw, 0.7rem) !important; }
+      .vertical-derecha .cabecera-letra, .vertical-izquierda .cabecera-letra { font-size: clamp(0.7rem, 3vw, 1rem) !important; }
     }
 
     .cam-box { background: black; border-radius: 8px; overflow: hidden; width: 100%; max-width: 300px; aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; }
@@ -70,6 +73,31 @@
       </div>
     </div>
     <div id="zonaCamaras"></div>
+  </div>
+
+  <button id="btnAjustesVista" onclick="toggleAjustesVista()" title="Ajustar cómo se ve en tu pantalla" style="position:fixed; bottom:14px; right:14px; width:46px; height:46px; border-radius:50%; background:#2c3e50; color:white; border:none; font-size:1.3rem; cursor:pointer; z-index:9998; box-shadow:0 2px 8px rgba(0,0,0,0.4);">⚙️</button>
+
+  <div id="panelAjustesVista" style="display:none; position:fixed; bottom:70px; right:14px; background:#1e293b; padding:16px; border-radius:10px; width:250px; z-index:9998; box-shadow:0 4px 15px rgba(0,0,0,0.5); font-size:0.85rem;">
+    <strong>Ajustar vista (solo en tu pantalla)</strong>
+    <p style="font-size:0.75rem; color:#94a3b8; margin:6px 0 12px;">Esto no afecta a nadie más, solo cambia cómo lo ves tú en este dispositivo.</p>
+
+    <label style="display:block; margin-bottom:4px;">Orientación:</label>
+    <select id="selVistaLayout" style="width:100%; padding:6px; margin-bottom:10px; border-radius:6px;">
+      <option value="admin">Usar la del organizador</option>
+      <option value="horizontal">Horizontal (cámaras abajo)</option>
+      <option value="vertical-derecha">Vertical (cámaras a la derecha)</option>
+      <option value="vertical-izquierda">Vertical (cámaras a la izquierda)</option>
+    </select>
+
+    <label style="display:block; margin-bottom:4px;">Cuadrícula:</label>
+    <select id="selVistaGrid" style="width:100%; padding:6px; margin-bottom:10px; border-radius:6px;">
+      <option value="admin">Usar la del organizador</option>
+      <option value="bingo">Columnas B-I-N-G-O</option>
+      <option value="simple">Cuadrícula simple 1-75</option>
+    </select>
+
+    <button onclick="guardarAjustesVistaLocal()" style="width:100%; padding:8px; background:#2ecc71; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">Aplicar</button>
+    <button onclick="restablecerAjustesVistaLocal()" style="width:100%; padding:8px; background:transparent; color:#94a3b8; border:1px solid #475569; border-radius:6px; cursor:pointer; margin-top:6px;">Restablecer</button>
   </div>
 
   <script>
@@ -140,15 +168,19 @@
     }
 
     let ESTILO_GRID_ACTUAL = null;
+    let ULTIMO_TABLERO_RECIBIDO = null;
 
     function pintarTablero(tablero) {
+      ULTIMO_TABLERO_RECIBIDO = tablero;
       const visible = !!tablero.visible_publico;
       document.getElementById("mensajeEspera").style.display = visible ? "none" : "block";
       document.getElementById("contenidoTablero").style.display = visible ? "block" : "none";
       if (!visible) return;
 
+      const ajustesLocales = obtenerAjustesLocales();
+
       // Solo reconstruye el grid si cambió el estilo (evita parpadeos innecesarios)
-      const estiloGrid = tablero.estilo_grid || 'bingo';
+      const estiloGrid = (ajustesLocales.grid && ajustesLocales.grid !== 'admin') ? ajustesLocales.grid : (tablero.estilo_grid || 'bingo');
       if (estiloGrid !== ESTILO_GRID_ACTUAL) {
         estiloGrid === 'simple' ? construirGrillaSimple() : construirGrilla();
         ESTILO_GRID_ACTUAL = estiloGrid;
@@ -188,16 +220,59 @@
       const ultimos = marcados.slice(-5).reverse();
       document.getElementById("ultimos5").innerHTML = ultimos.map(n => `<div class="chip-ultimo">${n}</div>`).join("");
 
-      aplicarLayout(tablero.layout || 'horizontal', tablero.posicion_camara || 'derecha', tablero.plantilla || 'clasica');
+      aplicarLayout(tablero.layout || 'horizontal', tablero.posicion_camara || 'derecha', tablero.plantilla || 'clasica', ajustesLocales);
       montarCamaras(tablero.camaras || []);
     }
 
-    function aplicarLayout(layout, posicionCamara, plantilla) {
+    function aplicarLayout(layout, posicionCamara, plantilla, ajustesLocales) {
       const cont = document.getElementById("contenedorPrincipal");
-      let clase = layout === 'vertical'
-        ? (posicionCamara === 'izquierda' ? 'vertical-izquierda' : 'vertical-derecha')
-        : 'horizontal';
+      let clase;
+
+      if (ajustesLocales && ajustesLocales.layout && ajustesLocales.layout !== 'admin') {
+        clase = ajustesLocales.layout; // 'horizontal' | 'vertical-derecha' | 'vertical-izquierda'
+      } else {
+        clase = layout === 'vertical'
+          ? (posicionCamara === 'izquierda' ? 'vertical-izquierda' : 'vertical-derecha')
+          : 'horizontal';
+      }
+
       cont.className = clase + (plantilla === 'show' ? ' plantilla-show' : '');
+    }
+
+    /* =========================================================================
+       AJUSTES LOCALES DEL ESPECTADOR (solo en este navegador, nunca en la BD)
+       Tienen prioridad sobre lo que configuró el organizador, si el espectador
+       decide ajustarlo (ej. pantalla grande de PC que aprovecha mejor horizontal).
+       ========================================================================= */
+    function claveAjustesLocales() { return 'tubingo_vista_' + MI_TENANT_ID; }
+
+    function obtenerAjustesLocales() {
+      try { return JSON.parse(localStorage.getItem(claveAjustesLocales())) || {}; } catch (e) { return {}; }
+    }
+
+    function toggleAjustesVista() {
+      const panel = document.getElementById("panelAjustesVista");
+      const abierto = panel.style.display === "block";
+      panel.style.display = abierto ? "none" : "block";
+      if (!abierto) {
+        const ajustes = obtenerAjustesLocales();
+        document.getElementById("selVistaLayout").value = ajustes.layout || "admin";
+        document.getElementById("selVistaGrid").value = ajustes.grid || "admin";
+      }
+    }
+
+    function guardarAjustesVistaLocal() {
+      const layout = document.getElementById("selVistaLayout").value;
+      const grid = document.getElementById("selVistaGrid").value;
+      localStorage.setItem(claveAjustesLocales(), JSON.stringify({ layout, grid }));
+      document.getElementById("panelAjustesVista").style.display = "none";
+      if (ULTIMO_TABLERO_RECIBIDO) pintarTablero(ULTIMO_TABLERO_RECIBIDO);
+    }
+
+    function restablecerAjustesVistaLocal() {
+      localStorage.removeItem(claveAjustesLocales());
+      document.getElementById("panelAjustesVista").style.display = "none";
+      if (ULTIMO_TABLERO_RECIBIDO) pintarTablero(ULTIMO_TABLERO_RECIBIDO);
     }
 
     let camarasYaMontadas = "";
