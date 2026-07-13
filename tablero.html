@@ -39,6 +39,15 @@
     .num-celda.marcado { background: #2ecc71; color: #0f172a; }
     .num-celda.ultimo { animation: parpadeo 1s infinite; background: #e67e22; color: white; }
 
+    /* Cuadrícula simple: 15 columnas x 5 filas, números en orden, como cartilla clásica */
+    #grillaBingo.simple { display: grid; grid-template-columns: repeat(15, 1fr); gap: clamp(2px, 0.6vw, 5px); width: 100%; max-width: 900px; }
+    #grillaBingo.simple .num-celda { width: 100%; aspect-ratio: 1/1; height: auto; font-size: clamp(0.55rem, 2.2vw, 0.85rem); }
+
+    /* Plantilla "Show": cámara 1 grande + resto pequeñas, arriba del todo (modo horizontal) */
+    .plantilla-show.horizontal #zonaCamaras { order: -1; flex-direction: row; align-items: flex-start; margin-bottom: 15px; }
+    .plantilla-show #zonaCamaras .cam-box:first-child { width: min(60vw, 420px); aspect-ratio: 16/9; }
+    .plantilla-show #zonaCamaras .cam-box:not(:first-child) { width: min(35vw, 160px); }
+
     #panelJuegos { margin-top: 20px; width: 100%; max-width: 500px; }
     #panelJuegos h4 { text-align:center; margin-bottom:10px; }
     .juego-chip { display:inline-block; padding:6px 12px; margin:4px; border-radius:20px; font-size:inherit; background:#1e293b; }
@@ -83,7 +92,6 @@
       if (!tenant) { document.getElementById("mensajeEspera").style.display = "block"; document.getElementById("mensajeEspera").innerText = "Cliente no encontrado."; return; }
 
       MI_TENANT_ID = tenant.id;
-      construirGrilla();
 
       const { data: tablero } = await _supabase.from('tablero_bingo').select('*').eq('tenant_id', MI_TENANT_ID).maybeSingle();
       pintarTablero(tablero || {});
@@ -115,6 +123,7 @@
 
     function construirGrilla() {
       const cont = document.getElementById("grillaBingo");
+      cont.classList.remove("simple");
       cont.innerHTML = LETRAS.map(col => {
         let celdas = "";
         for (let n = col.desde; n <= col.hasta; n++) celdas += `<div class="num-celda" id="pub-num-${n}">${n}</div>`;
@@ -122,11 +131,28 @@
       }).join("");
     }
 
+    function construirGrillaSimple() {
+      const cont = document.getElementById("grillaBingo");
+      cont.classList.add("simple");
+      let celdas = "";
+      for (let n = 1; n <= 75; n++) celdas += `<div class="num-celda" id="pub-num-${n}">${n}</div>`;
+      cont.innerHTML = celdas;
+    }
+
+    let ESTILO_GRID_ACTUAL = null;
+
     function pintarTablero(tablero) {
       const visible = !!tablero.visible_publico;
       document.getElementById("mensajeEspera").style.display = visible ? "none" : "block";
       document.getElementById("contenidoTablero").style.display = visible ? "block" : "none";
       if (!visible) return;
+
+      // Solo reconstruye el grid si cambió el estilo (evita parpadeos innecesarios)
+      const estiloGrid = tablero.estilo_grid || 'bingo';
+      if (estiloGrid !== ESTILO_GRID_ACTUAL) {
+        estiloGrid === 'simple' ? construirGrillaSimple() : construirGrilla();
+        ESTILO_GRID_ACTUAL = estiloGrid;
+      }
 
       const marcados = tablero.numeros_marcados || [];
       const colorMarcado = tablero.color_marcado || '#2ecc71';
@@ -162,15 +188,16 @@
       const ultimos = marcados.slice(-5).reverse();
       document.getElementById("ultimos5").innerHTML = ultimos.map(n => `<div class="chip-ultimo">${n}</div>`).join("");
 
-      aplicarLayout(tablero.layout || 'horizontal', tablero.posicion_camara || 'derecha');
+      aplicarLayout(tablero.layout || 'horizontal', tablero.posicion_camara || 'derecha', tablero.plantilla || 'clasica');
       montarCamaras(tablero.camaras || []);
     }
 
-    function aplicarLayout(layout, posicionCamara) {
+    function aplicarLayout(layout, posicionCamara, plantilla) {
       const cont = document.getElementById("contenedorPrincipal");
-      cont.className = layout === 'vertical'
+      let clase = layout === 'vertical'
         ? (posicionCamara === 'izquierda' ? 'vertical-izquierda' : 'vertical-derecha')
         : 'horizontal';
+      cont.className = clase + (plantilla === 'show' ? ' plantilla-show' : '');
     }
 
     let camarasYaMontadas = "";
