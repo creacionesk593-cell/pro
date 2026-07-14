@@ -228,6 +228,7 @@
 
       aplicarLayout(tablero.layout || 'horizontal', tablero.posicion_camara || 'derecha', tablero.plantilla || 'clasica', ajustesLocales);
       montarCamaras(tablero.camaras || []);
+      reubicarPanelJuegos(window.CLASE_LAYOUT_ACTUAL);
     }
 
     function aplicarLayout(layout, posicionCamara, plantilla, ajustesLocales) {
@@ -243,9 +244,10 @@
       }
 
       cont.className = clase + (plantilla === 'show' ? ' plantilla-show' : '');
+      window.CLASE_LAYOUT_ACTUAL = clase;
+    }
 
-      // En modo vertical, el panel de "Juegos" se acomoda junto a la cámara
-      // para que el conjunto sea menos alto y aproveche mejor la pantalla.
+    function reubicarPanelJuegos(clase) {
       const panelJuegos = document.getElementById("panelJuegos");
       const zonaCamaras = document.getElementById("zonaCamaras");
       const areaTablero = document.getElementById("areaTablero");
@@ -306,15 +308,43 @@
       return url;
     }
 
-    function activarCamaraLocal(boton) {
+    function activarCamaraLocal(boton, rotacion) {
       const box = boton.closest(".cam-box");
       box.innerHTML = "";
       const video = document.createElement("video");
       video.autoplay = true; video.muted = true; video.playsInline = true;
       box.appendChild(video);
       navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } })
-        .then(stream => { video.srcObject = stream; })
+        .then(stream => {
+          video.srcObject = stream;
+          aplicarRotacionCamara(box, video, rotacion || 0);
+        })
         .catch(() => { box.innerHTML = '<span>Sin acceso a la cámara de este dispositivo.</span>'; });
+    }
+
+    // Gira la imagen de la cámara (útil cuando VDO.Ninja/OBS entrega el video
+    // rotado). Para 90°/270° intercambia ancho y alto para que llene bien
+    // el recuadro sin verse estirado, y se recalcula si el recuadro cambia de tamaño.
+    function aplicarRotacionCamara(box, elemento, grados) {
+      if (!grados || grados === 0) return;
+
+      const ajustar = () => {
+        const w = box.clientWidth, h = box.clientHeight;
+        if (grados === 180) {
+          elemento.style.transform = "rotate(180deg)";
+        } else {
+          elemento.style.position = "absolute";
+          elemento.style.top = "50%";
+          elemento.style.left = "50%";
+          elemento.style.width = h + "px";
+          elemento.style.height = w + "px";
+          elemento.style.marginLeft = (-h / 2) + "px";
+          elemento.style.marginTop = (-w / 2) + "px";
+          elemento.style.transform = `rotate(${grados}deg)`;
+        }
+      };
+      ajustar();
+      new ResizeObserver(ajustar).observe(box);
     }
 
     function montarCamaras(camaras) {
@@ -334,7 +364,7 @@
         if (cam.tipo === "dispositivo") {
           box.innerHTML = `
             <div style="text-align:center; padding:10px;">
-              <button onclick="activarCamaraLocal(this)" style="background:#e67e22; color:white; border:none; padding:10px 14px; border-radius:6px; cursor:pointer; font-size:0.8rem;">
+              <button onclick="activarCamaraLocal(this, ${cam.rotacion || 0})" style="background:#e67e22; color:white; border:none; padding:10px 14px; border-radius:6px; cursor:pointer; font-size:0.8rem;">
                 🎥 Activar cámara de este dispositivo
               </button>
               <p style="font-size:0.7rem; color:#999; margin-top:8px;">Solo toca esto si ESTE dispositivo es la pantalla que transmite en vivo. Los participantes no deben tocarlo.</p>
@@ -344,6 +374,7 @@
           iframe.src = convertirUrlEmbebible(cam.url);
           iframe.allow = "camera; microphone; autoplay; fullscreen";
           box.appendChild(iframe);
+          aplicarRotacionCamara(box, iframe, cam.rotacion || 0);
 
           if (cam.url.includes("youtube.com") || cam.url.includes("youtu.be")) {
             const aviso = document.createElement("div");
@@ -353,6 +384,394 @@
           }
         }
       });
+    }
+  </script>
+</body>
+</html>
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Control del Tablero - TuBingo Pro</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #f1f2f6; color: #2d3436; }
+    header { background: #2c3e50; color: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    main { padding: 20px; max-width: 1100px; margin: auto; }
+    .seccion { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 20px; }
+    .seccion h3 { margin-top: 0; border-bottom: 2px solid #f1f2f6; padding-bottom: 10px; }
+
+    .grid-numeros { display: grid; grid-template-columns: repeat(15, 1fr); gap: 6px; margin-top: 15px; }
+    .num-btn { padding: 10px 0; text-align: center; border-radius: 6px; border: 1px solid #ccc; background: white; cursor: pointer; font-weight: bold; font-size: 0.9rem; }
+    .num-btn.marcado { background: #2ecc71; color: white; border-color: #27ae60; }
+    .num-btn.actual { outline: 3px solid #e67e22; }
+
+    .grid-config { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; }
+    .grupo label { font-size: 0.85rem; font-weight: bold; display: block; margin-bottom: 5px; }
+    .grupo select, .grupo input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+
+    button.accion { padding: 10px 18px; background: #2ecc71; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 12px; }
+    .caja-link { display: flex; gap: 10px; align-items: center; background: #eafaf1; padding: 12px; border-radius: 6px; margin-top: 10px; }
+    .caja-link input { flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 6px; }
+
+    .cam-slot { border: 1px solid #eee; border-radius: 8px; padding: 12px; margin-top: 10px; }
+  </style>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="conexion.js"></script>
+  <script src="auth.js"></script>
+</head>
+<body>
+  <header>
+    <h2 style="margin:0;">🎙️ Control del Tablero en Vivo</h2>
+    <div>
+      <a href="admin.html" style="color:white; margin-right:15px;">⬅️ Volver al Panel</a>
+      <button onclick="cerrarSesion()" style="background:rgba(255,255,255,0.2); color:white; border:none; padding:8px 14px; border-radius:6px; cursor:pointer;">Salir</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="seccion">
+      <h3>Enlace público para tus participantes</h3>
+      <p style="font-size:0.85rem; color:#7f8c8d;">Comparte este único enlace o muéstralo en la pantalla del evento. Se actualiza solo, en vivo, sin recargar.</p>
+      <div class="caja-link">
+        <input type="text" id="linkPublico" readonly>
+        <button class="accion" style="margin:0; width:auto;" onclick="copiarLink()">Copiar</button>
+        <button class="accion" style="margin:0; width:auto; background:#3498db;" onclick="window.open(document.getElementById('linkPublico').value, '_blank')">Abrir</button>
+      </div>
+    </div>
+
+    <div class="seccion">
+      <h3>🎲 Marcar Números</h3>
+      <label style="display:flex; align-items:center; gap:8px; font-weight:bold;">
+        <input type="checkbox" id="chkVisiblePublico" style="width:auto;" onchange="guardarVisibilidad()">
+        Mostrar el tablero a los participantes (si está apagado, ven "Esperando inicio del juego")
+      </label>
+      <p style="font-size:0.85rem; color:#7f8c8d;">Toca un número para marcarlo — se muestra al instante en la pantalla pública. Tócalo de nuevo para deshacer un error.</p>
+      <button class="accion" style="background:#e74c3c;" onclick="reiniciarPartida()">🔄 Reiniciar Partida (vaciar todos los números)</button>
+      <div class="grid-numeros" id="gridNumeros"></div>
+    </div>
+
+    <div class="seccion">
+      <h3>🏆 Juegos / Figuras de esta partida (hasta 20)</h3>
+      <p style="font-size:0.85rem; color:#7f8c8d;">Agrega cada juego (ej: "Juego A", "Locos", "Cometa") y márcalo como "Ya no disponible" cuando se termine, para que tus participantes lo vean reflejado al instante.</p>
+      <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
+        <input type="text" id="nuevoJuegoNombre" placeholder="Nombre del juego" style="flex:1; min-width:160px; padding:8px; border:1px solid #ccc; border-radius:6px;">
+        <input type="number" id="nuevoJuegoPrecio" placeholder="Precio (opcional)" min="0" step="0.01" style="width:140px; padding:8px; border:1px solid #ccc; border-radius:6px;">
+        <button class="accion" style="margin:0; width:auto;" onclick="agregarJuego()">➕ Agregar</button>
+      </div>
+      <div id="listaJuegos"></div>
+    </div>
+
+    <div class="seccion">
+      <h3>⚙️ Diseño del Tablero</h3>
+      <div class="grid-config">
+        <div class="grupo">
+          <label>Orientación:</label>
+          <select id="selLayout" onchange="guardarConfigTablero()">
+            <option value="horizontal">Horizontal (cámaras abajo)</option>
+            <option value="vertical">Vertical (cámaras al lado)</option>
+          </select>
+        </div>
+        <div class="grupo" id="grupoPosicionCamara">
+          <label>Lado de las cámaras (solo si es vertical):</label>
+          <select id="selPosicionCamara" onchange="guardarConfigTablero()">
+            <option value="derecha">Derecha</option>
+            <option value="izquierda">Izquierda</option>
+          </select>
+        </div>
+        <div class="grupo">
+          <label>Plantilla de cámaras:</label>
+          <select id="selPlantilla" onchange="guardarConfigTablero()">
+            <option value="clasica">Clásica (todas iguales)</option>
+            <option value="show">Estilo Show (cámara 1 grande, resto pequeñas arriba)</option>
+          </select>
+        </div>
+        <div class="grupo">
+          <label>Estilo de cuadrícula de números:</label>
+          <select id="selEstiloGrid" onchange="guardarConfigTablero()">
+            <option value="bingo">Columnas B-I-N-G-O (vertical)</option>
+            <option value="simple">Cuadrícula simple 1-75 (en fila, como cartilla clásica)</option>
+          </select>
+        </div>
+        <div class="grupo">
+          <label>Color de números marcados:</label>
+          <input type="color" id="colorMarcado" onchange="guardarConfigTablero()">
+        </div>
+        <div class="grupo">
+          <label>Color del número que parpadea:</label>
+          <input type="color" id="colorParpadeo" onchange="guardarConfigTablero()">
+        </div>
+        <div class="grupo">
+          <label>Tamaño de letra "Juegos de esta partida" (px):</label>
+          <input type="number" id="tamanoFuenteJuegos" min="10" max="40" onchange="guardarConfigTablero()">
+        </div>
+      </div>
+      <label style="display:flex; align-items:center; gap:8px; margin-top:15px; font-weight:bold;">
+        <input type="checkbox" id="chkOcultarNoLlamados" style="width:auto;" onchange="guardarConfigTablero()">
+        Ocultar los números que aún no han salido (tablero se ve vacío/elegante, solo se ven los ya cantados)
+      </label>
+    </div>
+
+    <div class="seccion">
+      <h3>📷 Cámaras / Transmisión (hasta 3)</h3>
+      <div id="contenedorCamaras"></div>
+      <button class="accion" onclick="guardarConfigTablero()">💾 Guardar Cámaras</button>
+    </div>
+  </main>
+
+  <script>
+    let TABLERO_ACTUAL = { numeros_marcados: [], visible_publico: false, layout: 'horizontal', posicion_camara: 'derecha', camaras: [] };
+
+    window.addEventListener('load', async () => {
+      const acceso = await requerirSesion('admin');
+      if (!acceso) return;
+
+      window.MI_TENANT_ID = acceso.perfil.tenant_id;
+      const slug = acceso.tenant ? acceso.tenant.slug : '';
+      const baseTablero = window.location.origin + window.location.pathname.replace('tablero-admin.html', 'tablero.html');
+      document.getElementById("linkPublico").value = baseTablero + '?tenant=' + encodeURIComponent(slug);
+
+      construirGridNumeros();
+      construirSlotsCamaras();
+      await cargarTablero();
+      await cargarJuegos();
+
+      _supabase.channel('tablero_admin_' + window.MI_TENANT_ID)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tablero_bingo', filter: `tenant_id=eq.${window.MI_TENANT_ID}` }, (payload) => {
+          if (payload.new) { TABLERO_ACTUAL = payload.new; pintarEstado(); }
+        })
+        .subscribe();
+
+      _supabase.channel('juegos_admin_' + window.MI_TENANT_ID)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tablero_juegos', filter: `tenant_id=eq.${window.MI_TENANT_ID}` }, () => {
+          cargarJuegos();
+        })
+        .subscribe();
+    });
+
+    function construirGridNumeros() {
+      const grid = document.getElementById("gridNumeros");
+      let html = "";
+      for (let n = 1; n <= 75; n++) {
+        html += `<div class="num-btn" id="num-${n}" onclick="alternarNumero(${n})">${n}</div>`;
+      }
+      grid.innerHTML = html;
+    }
+
+    function construirSlotsCamaras() {
+      const cont = document.getElementById("contenedorCamaras");
+      cont.innerHTML = "";
+      for (let i = 0; i < 3; i++) {
+        cont.innerHTML += `
+          <div class="cam-slot">
+            <strong>Cámara ${i + 1}</strong>
+            <div class="grid-config" style="margin-top:8px;">
+              <div class="grupo">
+                <label>Tipo:</label>
+                <select id="camTipo${i}">
+                  <option value="">— Desactivada —</option>
+                  <option value="dispositivo">Cámara de este dispositivo (webcam)</option>
+                  <option value="enlace">Enlace (OBS.Ninja, VDO.Ninja, YouTube, Facebook, etc.)</option>
+                </select>
+              </div>
+              <div class="grupo">
+                <label>Enlace (si aplica):</label>
+                <input type="text" id="camUrl${i}" placeholder="https://..." onchange="guardarConfigTablero()">
+              </div>
+              <div class="grupo">
+                <label>Rotación de la imagen:</label>
+                <select id="camRotacion${i}" onchange="guardarConfigTablero()">
+                  <option value="0">Normal (0°)</option>
+                  <option value="90">Girar 90°</option>
+                  <option value="180">Girar 180° (boca abajo)</option>
+                  <option value="270">Girar 270°</option>
+                </select>
+              </div>
+            </div>
+            <p style="font-size:0.75rem; color:#e67e22; margin:6px 0 0;">⚠️ "Cámara de este dispositivo" solo funciona bien si es la MISMA pantalla/PC que se muestra a todo el público (ej. una TV en el local). Si tus participantes abren el enlace en su propio celular, verían SU PROPIA cámara — para que todos vean la misma transmisión en vivo, usa un enlace (OBS.Ninja / VDO.Ninja / YouTube / Facebook Live).</p>
+            <p style="font-size:0.75rem; color:#7f8c8d; margin:4px 0 0;">💡 Para YouTube o Facebook, puedes pegar el enlace normal (el que copias del navegador o del botón "Compartir") — el sistema lo convierte automáticamente al formato correcto.</p>
+          </div>`;
+      }
+    }
+
+    async function cargarTablero() {
+      const { data, error } = await _supabase.from('tablero_bingo').select('*').eq('tenant_id', window.MI_TENANT_ID).maybeSingle();
+
+      if (!data) {
+        // Primera vez: crea la fila inicial para este cliente
+        const { data: creado } = await _supabase.from('tablero_bingo').insert({ tenant_id: window.MI_TENANT_ID }).select().single();
+        TABLERO_ACTUAL = creado;
+      } else {
+        TABLERO_ACTUAL = data;
+      }
+      pintarEstado();
+    }
+
+    function pintarEstado() {
+      document.querySelectorAll(".num-btn").forEach(el => el.classList.remove("marcado", "actual"));
+      const marcados = TABLERO_ACTUAL.numeros_marcados || [];
+      marcados.forEach(n => document.getElementById("num-" + n)?.classList.add("marcado"));
+      if (marcados.length > 0) {
+        document.getElementById("num-" + marcados[marcados.length - 1])?.classList.add("actual");
+      }
+
+      document.getElementById("chkVisiblePublico").checked = !!TABLERO_ACTUAL.visible_publico;
+      document.getElementById("selLayout").value = TABLERO_ACTUAL.layout || 'horizontal';
+      document.getElementById("selPosicionCamara").value = TABLERO_ACTUAL.posicion_camara || 'derecha';
+      document.getElementById("selPlantilla").value = TABLERO_ACTUAL.plantilla || 'clasica';
+      document.getElementById("selEstiloGrid").value = TABLERO_ACTUAL.estilo_grid || 'bingo';
+      document.getElementById("colorMarcado").value = TABLERO_ACTUAL.color_marcado || '#2ecc71';
+      document.getElementById("colorParpadeo").value = TABLERO_ACTUAL.color_parpadeo || '#e67e22';
+      document.getElementById("tamanoFuenteJuegos").value = TABLERO_ACTUAL.tamano_fuente_juegos || 16;
+      document.getElementById("chkOcultarNoLlamados").checked = !!TABLERO_ACTUAL.ocultar_no_llamados;
+
+      const camaras = TABLERO_ACTUAL.camaras || [];
+      for (let i = 0; i < 3; i++) {
+        const cam = camaras[i] || {};
+        document.getElementById("camTipo" + i).value = cam.tipo || "";
+        document.getElementById("camUrl" + i).value = cam.url || "";
+        document.getElementById("camRotacion" + i).value = cam.rotacion || "0";
+      }
+    }
+
+    async function alternarNumero(n) {
+      let marcados = [...(TABLERO_ACTUAL.numeros_marcados || [])];
+      const yaEstaba = marcados.includes(n);
+
+      if (yaEstaba) {
+        marcados = marcados.filter(x => x !== n);
+      } else {
+        marcados.push(n);
+      }
+
+      const { error } = await _supabase.from('tablero_bingo').update({ numeros_marcados: marcados, actualizado_en: new Date().toISOString() }).eq('tenant_id', window.MI_TENANT_ID);
+      if (error) { alert("❌ " + error.message); return; }
+
+      TABLERO_ACTUAL.numeros_marcados = marcados;
+      pintarEstado();
+
+      try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: yaEstaba ? "Desmarcar número del tablero" : "Marcar número del tablero", p_detalle: `Número: ${n}` }); } catch(e) {}
+    }
+
+    async function guardarVisibilidad() {
+      const visible = document.getElementById("chkVisiblePublico").checked;
+      await _supabase.from('tablero_bingo').update({ visible_publico: visible }).eq('tenant_id', window.MI_TENANT_ID);
+      TABLERO_ACTUAL.visible_publico = visible;
+      try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Cambiar visibilidad del tablero", p_detalle: visible ? "Mostrado al público" : "Ocultado" }); } catch(e) {}
+    }
+
+    async function guardarConfigTablero() {
+      const layout = document.getElementById("selLayout").value;
+      const posicion_camara = document.getElementById("selPosicionCamara").value;
+      const plantilla = document.getElementById("selPlantilla").value;
+      const estilo_grid = document.getElementById("selEstiloGrid").value;
+      const color_marcado = document.getElementById("colorMarcado").value;
+      const color_parpadeo = document.getElementById("colorParpadeo").value;
+      const ocultar_no_llamados = document.getElementById("chkOcultarNoLlamados").checked;
+      const tamano_fuente_juegos = parseInt(document.getElementById("tamanoFuenteJuegos").value, 10) || 16;
+
+      const camaras = [];
+      for (let i = 0; i < 3; i++) {
+        const tipo = document.getElementById("camTipo" + i).value;
+        const url = document.getElementById("camUrl" + i).value.trim();
+        const rotacion = parseInt(document.getElementById("camRotacion" + i).value, 10) || 0;
+        camaras.push({ tipo, url, rotacion, activa: !!tipo });
+      }
+
+      const { error } = await _supabase.from('tablero_bingo').update({ layout, posicion_camara, plantilla, estilo_grid, color_marcado, color_parpadeo, ocultar_no_llamados, tamano_fuente_juegos, camaras }).eq('tenant_id', window.MI_TENANT_ID);
+      if (error) { alert("❌ " + error.message); return; }
+
+      TABLERO_ACTUAL.layout = layout;
+      TABLERO_ACTUAL.posicion_camara = posicion_camara;
+      TABLERO_ACTUAL.plantilla = plantilla;
+      TABLERO_ACTUAL.estilo_grid = estilo_grid;
+      TABLERO_ACTUAL.color_marcado = color_marcado;
+      TABLERO_ACTUAL.color_parpadeo = color_parpadeo;
+      TABLERO_ACTUAL.ocultar_no_llamados = ocultar_no_llamados;
+      TABLERO_ACTUAL.tamano_fuente_juegos = tamano_fuente_juegos;
+      TABLERO_ACTUAL.camaras = camaras;
+
+      try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Actualizar configuración del tablero", p_detalle: `Layout: ${layout}` }); } catch(e) {}
+    }
+
+    function copiarLink() {
+      const input = document.getElementById("linkPublico");
+      input.select();
+      navigator.clipboard.writeText(input.value).then(() => alert("✅ Enlace copiado."));
+    }
+
+    async function reiniciarPartida() {
+      if (!confirm("¿Reiniciar la partida? Esto vacía TODOS los números marcados para empezar un juego nuevo desde cero.")) return;
+
+      const { error } = await _supabase.from('tablero_bingo').update({ numeros_marcados: [], actualizado_en: new Date().toISOString() }).eq('tenant_id', window.MI_TENANT_ID);
+      if (error) { alert("❌ " + error.message); return; }
+
+      TABLERO_ACTUAL.numeros_marcados = [];
+      pintarEstado();
+      alert("✅ Partida reiniciada. Puedes empezar a marcar números del juego nuevo.");
+
+      try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Reiniciar partida del tablero", p_detalle: "Se vaciaron todos los números marcados" }); } catch(e) {}
+    }
+
+    /* =========================================================================
+       GESTIÓN DE JUEGOS / FIGURAS (hasta 20)
+       ========================================================================= */
+    async function cargarJuegos() {
+      const { data, error } = await _supabase.from('tablero_juegos').select('*').eq('tenant_id', window.MI_TENANT_ID).order('orden', { ascending: true });
+      if (error) { console.error(error.message); return; }
+
+      const cont = document.getElementById("listaJuegos");
+      if (!data || data.length === 0) {
+        cont.innerHTML = `<p style="color:#999; font-size:0.85rem;">Todavía no has agregado ningún juego.</p>`;
+        return;
+      }
+
+      cont.innerHTML = data.map(j => `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; border:1px solid #eee; border-radius:6px; margin-bottom:8px; ${j.disponible ? '' : 'opacity:0.6;'}">
+          <div>
+            <strong>${j.nombre}</strong>
+            ${j.precio > 0 ? ` — $${Number(j.precio).toFixed(2)}` : ''}
+            ${!j.disponible ? ' <span style="color:#e74c3c; font-weight:bold;">(YA NO DISPONIBLE)</span>' : ''}
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button class="accion" style="margin:0; padding:6px 10px; font-size:0.8rem; background:${j.disponible ? '#e74c3c' : '#2ecc71'};" onclick="alternarDisponibilidadJuego(${j.id}, ${j.disponible})">
+              ${j.disponible ? 'Marcar No Disponible' : 'Reactivar'}
+            </button>
+            <button class="accion" style="margin:0; padding:6px 10px; font-size:0.8rem; background:#95a5a6;" onclick="eliminarJuego(${j.id})">Eliminar</button>
+          </div>
+        </div>`).join("");
+    }
+
+    async function agregarJuego() {
+      const nombre = document.getElementById("nuevoJuegoNombre").value.trim();
+      const precio = parseFloat(document.getElementById("nuevoJuegoPrecio").value) || 0;
+      if (!nombre) { alert("Escribe el nombre del juego."); return; }
+
+      const { count } = await _supabase.from('tablero_juegos').select('id', { count: 'exact', head: true }).eq('tenant_id', window.MI_TENANT_ID);
+      if ((count || 0) >= 20) { alert("Ya tienes 20 juegos creados (el máximo). Elimina alguno para agregar otro."); return; }
+
+      const { error } = await _supabase.from('tablero_juegos').insert({ tenant_id: window.MI_TENANT_ID, nombre, precio, orden: count || 0 });
+      if (error) { alert("❌ " + error.message); return; }
+
+      document.getElementById("nuevoJuegoNombre").value = "";
+      document.getElementById("nuevoJuegoPrecio").value = "";
+      await cargarJuegos();
+      try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Agregar juego al tablero", p_detalle: nombre }); } catch(e) {}
+    }
+
+    async function alternarDisponibilidadJuego(id, estabaDisponible) {
+      const { error } = await _supabase.from('tablero_juegos').update({ disponible: !estabaDisponible }).eq('id', id);
+      if (error) { alert("❌ " + error.message); return; }
+      await cargarJuegos();
+      try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: estabaDisponible ? "Marcar juego no disponible" : "Reactivar juego", p_detalle: `ID juego: ${id}` }); } catch(e) {}
+    }
+
+    async function eliminarJuego(id) {
+      if (!confirm("¿Eliminar este juego de la lista?")) return;
+      const { error } = await _supabase.from('tablero_juegos').delete().eq('id', id);
+      if (error) { alert("❌ " + error.message); return; }
+      await cargarJuegos();
     }
   </script>
 </body>
