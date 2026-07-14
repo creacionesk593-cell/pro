@@ -6,80 +6,80 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     * { box-sizing: border-box; }
-    html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; color: white; font-family: 'Segoe UI', sans-serif; }
+    body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #0f172a; color: white; min-height: 100vh; overflow-x: hidden; }
+    #contenedorPrincipal { display: flex; min-height: 100vh; margin: 0 auto; padding: 15px; gap: 20px; overflow-x: hidden; }
+    #contenedorPrincipal.horizontal { flex-direction: column; align-items: center; justify-content: flex-start; }
+    #contenedorPrincipal.vertical-derecha { flex-direction: row; align-items: flex-start; justify-content: center; flex-wrap: nowrap; }
+    #contenedorPrincipal.vertical-izquierda { flex-direction: row-reverse; align-items: flex-start; justify-content: center; flex-wrap: nowrap; }
 
-    /* El "escenario" ocupa toda la pantalla; adentro, el tablero se escala
-       automáticamente (por JS) para llenar el ancho Y el alto disponibles,
-       sin importar el tamaño del dispositivo (celular, PC, TV) ni su orientación. */
-    #escenario { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    #zonaTablero { flex: 0 1 auto; padding: 6px; display: flex; flex-direction: column; align-items: center; max-width: 100%; min-width: 0; }
+    #zonaCamaras { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; max-width: 100%; }
+    .horizontal #zonaCamaras { flex-direction: row; margin-top: 12px; }
+    .horizontal #zonaCamaras .cam-box { width: min(45vw, 560px); }
+    .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras { flex-direction: column; flex: 1 1 auto; max-width: 560px; min-width: 160px; }
 
-    #contenedorPrincipal { display: flex; gap: 25px; transform-origin: center center; }
-    #contenedorPrincipal.horizontal { flex-direction: column; align-items: center; }
-    #contenedorPrincipal.vertical-derecha { flex-direction: row; align-items: flex-start; }
-    #contenedorPrincipal.vertical-izquierda { flex-direction: row-reverse; align-items: flex-start; }
-
-    #zonaTablero { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
-    #areaTablero { display: flex; flex-direction: column; align-items: stretch; width: max-content; }
-
-    #zonaCamaras { display: flex; gap: 12px; flex-shrink: 0; }
-    .horizontal #zonaCamaras { flex-direction: row; margin-top: 15px; }
-    .horizontal #zonaCamaras .cam-box { width: 340px; }
-    .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras { flex-direction: column; width: 380px; }
-
-    .cam-box { background: black; border-radius: 10px; overflow: hidden; width: 100%; aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; position: relative; }
+    .cam-box { background: black; border-radius: 8px; overflow: hidden; width: 100%; aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; position: relative; }
     .cam-box video, .cam-box iframe { width: 100%; height: 100%; border: none; object-fit: cover; }
-    .cam-box span { font-size: 13px; color: #999; padding: 10px; text-align: center; }
+    .cam-box span { font-size: 0.75rem; color: #999; padding: 10px; text-align: center; }
 
-    #numeroActual { font-size: 72px; font-weight: bold; text-align: center; margin: 0 0 12px; padding: 14px 0; border-radius: 14px; background: #e67e22; animation: parpadeo 1s infinite; width: 100%; }
+    @media (max-width: 480px) {
+      #contenedorPrincipal { padding: 6px; gap: 8px; }
+      #zonaTablero { padding: 2px; }
+      .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras { min-width: 90px; }
+      .vertical-derecha .num-celda, .vertical-izquierda .num-celda { width: clamp(14px, 4.8vw, 28px) !important; height: clamp(14px, 4.8vw, 28px) !important; font-size: clamp(0.4rem, 2vw, 0.65rem) !important; }
+      .vertical-derecha .cabecera-letra, .vertical-izquierda .cabecera-letra { font-size: clamp(0.6rem, 2.6vw, 0.9rem) !important; }
+    }
+
+    #numeroActual { font-size: clamp(2.2rem, 8vw, 6rem); font-weight: bold; text-align: center; margin: 10px 0; padding: clamp(6px,2vw,12px) clamp(14px,5vw,30px); border-radius: 12px; background: #e67e22; animation: parpadeo 1s infinite; width: 100%; }
     @keyframes parpadeo { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
 
-    #ultimos5 { display: flex; gap: 10px; margin-bottom: 15px; justify-content: center; }
-    .chip-ultimo { background: #34495e; padding: 8px 16px; border-radius: 22px; font-weight: bold; font-size: 17px; }
+    #areaTablero { display: flex; flex-direction: column; align-items: stretch; width: max-content; max-width: 100%; }
 
-    .columna-letra { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-    .cabecera-letra { font-size: 26px; font-weight: bold; background: #1e293b; width: 100%; text-align: center; padding: 8px; border-radius: 8px; }
-    #grillaBingo { display: flex; gap: 8px; }
-    .num-celda { width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: #1e293b; font-weight: bold; font-size: 16px; }
+    #ultimos5 { display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap; justify-content: center; }
+    .chip-ultimo { background: #34495e; padding: 6px 12px; border-radius: 20px; font-weight: bold; font-size: clamp(0.75rem, 3vw, 1.1rem); }
+
+    .columna-letra { display: flex; flex-direction: column; align-items: center; gap: clamp(3px, 1vw, 7px); }
+    .cabecera-letra { font-size: clamp(1rem, 3.5vw, 2rem); font-weight: bold; background: #0ea5e9; color: white; width: 100%; text-align: center; padding: clamp(3px,1vw,7px); border-radius: 6px; }
+    #grillaBingo { display: flex; gap: clamp(3px, 1.2vw, 9px); max-width: 100%; }
+    .num-celda { width: clamp(24px, 5.5vw, 58px); height: clamp(24px, 5.5vw, 58px); display: flex; align-items: center; justify-content: center; border-radius: 6px; background: #1e293b; font-weight: bold; font-size: clamp(0.6rem, 2.2vw, 1.15rem); }
     .num-celda.marcado { background: #2ecc71; color: #0f172a; }
     .num-celda.ultimo { animation: parpadeo 1s infinite; background: #e67e22; color: white; }
 
     /* Cuadrícula simple: 15 números por fila, con la letra B-I-N-G-O al inicio de cada fila */
-    #grillaBingo.simple { display: flex; flex-direction: column; gap: 6px; }
-    .fila-simple { display: flex; gap: 6px; align-items: center; }
-    .letra-fila-simple { width: 40px; height: 42px; display: flex; align-items: center; justify-content: center; background: #0ea5e9; color: white; font-weight: bold; font-size: 18px; border-radius: 6px; flex-shrink: 0; }
-    #grillaBingo.simple .num-celda { width: 42px; height: 42px; font-size: 14px; flex-shrink: 0; }
+    #grillaBingo.simple { display: flex; flex-direction: column; gap: clamp(3px, 1vw, 7px); }
+    .fila-simple { display: flex; gap: clamp(3px, 1vw, 7px); align-items: center; }
+    .letra-fila-simple { width: clamp(20px, 4.5vw, 46px); height: clamp(20px, 4.5vw, 46px); display: flex; align-items: center; justify-content: center; background: #0ea5e9; color: white; font-weight: bold; font-size: clamp(0.7rem, 2.2vw, 1.2rem); border-radius: 6px; flex-shrink: 0; }
+    #grillaBingo.simple .num-celda { width: clamp(20px, 4.5vw, 46px); height: clamp(20px, 4.5vw, 46px); font-size: clamp(0.55rem, 1.8vw, 0.95rem); flex-shrink: 0; }
 
     /* Plantilla "Show": cámara 1 grande + resto pequeñas, arriba del todo (modo horizontal) */
     .plantilla-show.horizontal #zonaCamaras { order: -1; flex-direction: row; align-items: flex-start; margin-bottom: 15px; }
-    .plantilla-show #zonaCamaras .cam-box:first-child { width: 420px; aspect-ratio: 16/9; }
-    .plantilla-show #zonaCamaras .cam-box:not(:first-child) { width: 160px; }
+    .plantilla-show #zonaCamaras .cam-box:first-child { width: min(60vw, 560px); aspect-ratio: 16/9; }
+    .plantilla-show #zonaCamaras .cam-box:not(:first-child) { width: min(30vw, 200px); }
 
     #panelJuegos { margin-top: 20px; width: 100%; text-align: center; }
     #panelJuegos h4 { text-align:center; margin-bottom:10px; }
-    .juego-chip { display:inline-block; padding:6px 14px; margin:4px; border-radius:20px; font-size:inherit; background:#1e293b; }
+    .juego-chip { display:inline-block; padding:6px 12px; margin:4px; border-radius:20px; font-size:inherit; background:#1e293b; }
     .juego-chip.no-disponible { background:#e74c3c; text-decoration:line-through; opacity:0.7; }
 
-    #mensajeEspera { font-size: 32px; text-align: center; opacity: 0.8; }
+    #mensajeEspera { font-size: 1.8rem; text-align: center; margin-top: 15%; opacity: 0.8; }
   </style>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="conexion.js"></script>
 </head>
 <body>
-  <div id="escenario">
-    <div id="contenedorPrincipal" class="horizontal">
-      <div id="zonaTablero">
-        <div id="mensajeEspera" style="display:none;">⏳ Esperando inicio del juego...</div>
-        <div id="contenidoTablero" style="display:none;">
-          <div id="areaTablero">
-            <div id="numeroActual">--</div>
-            <div id="ultimos5"></div>
-            <div id="grillaBingo"></div>
-            <div id="panelJuegos"><h4>🏆 Juegos de esta partida</h4><div id="listaJuegosPublico"></div></div>
-          </div>
+  <div id="contenedorPrincipal" class="horizontal">
+    <div id="zonaTablero">
+      <div id="mensajeEspera" style="display:none;">⏳ Esperando inicio del juego...</div>
+      <div id="contenidoTablero" style="display:none; width:100%;">
+        <div id="areaTablero">
+          <div id="numeroActual">--</div>
+          <div id="ultimos5"></div>
+          <div id="grillaBingo"></div>
+          <div id="panelJuegos"><h4>🏆 Juegos de esta partida</h4><div id="listaJuegosPublico"></div></div>
         </div>
       </div>
-      <div id="zonaCamaras"></div>
     </div>
+    <div id="zonaCamaras"></div>
   </div>
 
   <button id="btnAjustesVista" onclick="toggleAjustesVista()" title="Ajustar cómo se ve en tu pantalla" style="position:fixed; bottom:14px; right:14px; width:46px; height:46px; border-radius:50%; background:#2c3e50; color:white; border:none; font-size:1.3rem; cursor:pointer; z-index:9998; box-shadow:0 2px 8px rgba(0,0,0,0.4);">⚙️</button>
@@ -121,10 +121,10 @@
     window.addEventListener('load', async () => {
       const params = new URLSearchParams(window.location.search);
       const slug = params.get("tenant");
-      if (!slug) { mostrarMensajeEspera("Falta indicar el cliente (tenant) en el enlace."); return; }
+      if (!slug) { document.getElementById("mensajeEspera").style.display = "block"; document.getElementById("mensajeEspera").innerText = "Falta indicar el cliente (tenant) en el enlace."; return; }
 
       const { data: tenant } = await _supabase.from('tenants').select('id').eq('slug', slug).maybeSingle();
-      if (!tenant) { mostrarMensajeEspera("Cliente no encontrado."); return; }
+      if (!tenant) { document.getElementById("mensajeEspera").style.display = "block"; document.getElementById("mensajeEspera").innerText = "Cliente no encontrado."; return; }
 
       MI_TENANT_ID = tenant.id;
 
@@ -142,45 +142,9 @@
       _supabase.channel('juegos_publico_' + MI_TENANT_ID)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'tablero_juegos', filter: `tenant_id=eq.${MI_TENANT_ID}` }, () => {
           cargarJuegosPublico();
-          ajustarEscala();
         })
         .subscribe();
-
-      window.addEventListener('resize', ajustarEscala);
-      window.addEventListener('orientationchange', () => setTimeout(ajustarEscala, 200));
     });
-
-    function mostrarMensajeEspera(texto) {
-      document.getElementById("mensajeEspera").style.display = "block";
-      document.getElementById("mensajeEspera").innerText = texto;
-      ajustarEscala();
-    }
-
-    /* =========================================================================
-       ESCALADO AUTOMÁTICO A PANTALLA COMPLETA
-       El tablero se construye a un tamaño "de diseño" fijo (en píxeles), y este
-       script lo escala para llenar el ancho Y el alto disponibles de CUALQUIER
-       pantalla (celular, PC, TV) y orientación, sin cortar nada ni dejar
-       espacios vacíos.
-       ========================================================================= */
-    function ajustarEscala() {
-      const contenido = document.getElementById("contenedorPrincipal");
-      contenido.style.transform = "none";
-
-      // Espera un frame para que el navegador recalcule el tamaño natural
-      requestAnimationFrame(() => {
-        const rect = contenido.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) return;
-
-        const margen = 0.97; // pequeño respiro para que no toque los bordes
-        const escala = Math.min(
-          (window.innerWidth * margen) / rect.width,
-          (window.innerHeight * margen) / rect.height
-        );
-
-        contenido.style.transform = `scale(${escala})`;
-      });
-    }
 
     let TAMANO_FUENTE_JUEGOS = 16;
 
@@ -188,10 +152,8 @@
       const { data } = await _supabase.from('tablero_juegos').select('*').eq('tenant_id', MI_TENANT_ID).order('orden', { ascending: true });
       const cont = document.getElementById("listaJuegosPublico");
       cont.style.fontSize = TAMANO_FUENTE_JUEGOS + "px";
-      if (!data || data.length === 0) { cont.innerHTML = ""; } else {
-        cont.innerHTML = data.map(j => `<span class="juego-chip ${j.disponible ? '' : 'no-disponible'}">${j.nombre}</span>`).join("");
-      }
-      ajustarEscala();
+      if (!data || data.length === 0) { cont.innerHTML = ""; return; }
+      cont.innerHTML = data.map(j => `<span class="juego-chip ${j.disponible ? '' : 'no-disponible'}">${j.nombre}</span>`).join("");
     }
 
     function construirGrilla() {
@@ -222,11 +184,10 @@
       const visible = !!tablero.visible_publico;
       document.getElementById("mensajeEspera").style.display = visible ? "none" : "block";
       document.getElementById("contenidoTablero").style.display = visible ? "block" : "none";
-      if (!visible) { ajustarEscala(); return; }
+      if (!visible) return;
 
       const ajustesLocales = obtenerAjustesLocales();
 
-      // Solo reconstruye el grid si cambió el estilo (evita parpadeos innecesarios)
       const estiloGrid = (ajustesLocales.grid && ajustesLocales.grid !== 'admin') ? ajustesLocales.grid : (tablero.estilo_grid || 'bingo');
       if (estiloGrid !== ESTILO_GRID_ACTUAL) {
         estiloGrid === 'simple' ? construirGrillaSimple() : construirGrilla();
@@ -267,8 +228,6 @@
 
       aplicarLayout(tablero.layout || 'horizontal', tablero.posicion_camara || 'derecha', tablero.plantilla || 'clasica', ajustesLocales);
       montarCamaras(tablero.camaras || []);
-
-      ajustarEscala();
     }
 
     function aplicarLayout(layout, posicionCamara, plantilla, ajustesLocales) {
@@ -276,7 +235,7 @@
       let clase;
 
       if (ajustesLocales && ajustesLocales.layout && ajustesLocales.layout !== 'admin') {
-        clase = ajustesLocales.layout; // 'horizontal' | 'vertical-derecha' | 'vertical-izquierda'
+        clase = ajustesLocales.layout;
       } else {
         clase = layout === 'vertical'
           ? (posicionCamara === 'izquierda' ? 'vertical-izquierda' : 'vertical-derecha')
@@ -286,8 +245,7 @@
       cont.className = clase + (plantilla === 'show' ? ' plantilla-show' : '');
 
       // En modo vertical, el panel de "Juegos" se acomoda junto a la cámara
-      // (no debajo de todo el tablero), para que el conjunto sea menos alto
-      // y aproveche mejor la pantalla.
+      // para que el conjunto sea menos alto y aproveche mejor la pantalla.
       const panelJuegos = document.getElementById("panelJuegos");
       const zonaCamaras = document.getElementById("zonaCamaras");
       const areaTablero = document.getElementById("areaTablero");
@@ -299,9 +257,6 @@
       }
     }
 
-    /* =========================================================================
-       AJUSTES LOCALES DEL ESPECTADOR (solo en este navegador, nunca en la BD)
-       ========================================================================= */
     function claveAjustesLocales() { return 'tubingo_vista_' + MI_TENANT_ID; }
 
     function obtenerAjustesLocales() {
@@ -334,7 +289,6 @@
     }
 
     let camarasYaMontadas = "";
-    // Convierte enlaces normales de YouTube/Facebook a su versión "embebible"
     function convertirUrlEmbebible(url) {
       if (!url) return url;
 
@@ -380,10 +334,10 @@
         if (cam.tipo === "dispositivo") {
           box.innerHTML = `
             <div style="text-align:center; padding:10px;">
-              <button onclick="activarCamaraLocal(this)" style="background:#e67e22; color:white; border:none; padding:10px 14px; border-radius:6px; cursor:pointer; font-size:14px;">
+              <button onclick="activarCamaraLocal(this)" style="background:#e67e22; color:white; border:none; padding:10px 14px; border-radius:6px; cursor:pointer; font-size:0.8rem;">
                 🎥 Activar cámara de este dispositivo
               </button>
-              <p style="font-size:12px; color:#999; margin-top:8px;">Solo toca esto si ESTE dispositivo es la pantalla que transmite en vivo. Los participantes no deben tocarlo.</p>
+              <p style="font-size:0.7rem; color:#999; margin-top:8px;">Solo toca esto si ESTE dispositivo es la pantalla que transmite en vivo. Los participantes no deben tocarlo.</p>
             </div>`;
         } else if (cam.tipo === "enlace" && cam.url) {
           const iframe = document.createElement("iframe");
@@ -393,14 +347,12 @@
 
           if (cam.url.includes("youtube.com") || cam.url.includes("youtu.be")) {
             const aviso = document.createElement("div");
-            aviso.style.cssText = "position:absolute; bottom:2px; left:2px; right:2px; font-size:11px; color:#f39c12; background:rgba(0,0,0,0.6); padding:2px 4px; border-radius:4px; text-align:center; pointer-events:none;";
+            aviso.style.cssText = "position:absolute; bottom:2px; left:2px; right:2px; font-size:0.6rem; color:#f39c12; background:rgba(0,0,0,0.6); padding:2px 4px; border-radius:4px; text-align:center; pointer-events:none;";
             aviso.innerText = "Si no carga: el dueño del video desactivó \"permitir insertar\" en YouTube, o el enlace no es válido.";
             box.appendChild(aviso);
           }
         }
       });
-
-      ajustarEscala();
     }
   </script>
 </body>
