@@ -12,22 +12,23 @@
     #contenedorPrincipal.vertical-derecha { flex-direction: row; align-items: flex-start; justify-content: center; flex-wrap: nowrap; }
     #contenedorPrincipal.vertical-izquierda { flex-direction: row-reverse; align-items: flex-start; justify-content: center; flex-wrap: nowrap; }
 
-    #zonaTablero { flex: 1 1 auto; padding: 6px; display: flex; flex-direction: column; align-items: center; max-width: 100%; min-width: 0; }
+    #zonaTablero { flex: 0 1 auto; padding: 6px; display: flex; flex-direction: column; align-items: center; max-width: 100%; min-width: 0; }
     #zonaCamaras { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; max-width: 100%; }
     .horizontal #zonaCamaras { flex-direction: row; margin-top: 10px; }
-    .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras { flex-direction: column; flex: 0 1 220px; min-width: 90px; max-width: 260px; flex-shrink: 1; }
+    .horizontal #zonaCamaras .cam-box { width: min(45vw, 420px); }
+    .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras { flex-direction: column; flex: 0 0 auto; width: min(38vw, 420px); }
 
-    @media (max-width: 480px) {
-      #contenedorPrincipal { padding: 6px; gap: 8px; }
-      #zonaTablero { padding: 2px; }
-      .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras { flex: 0 1 110px; min-width: 70px; }
-      .vertical-derecha .num-celda, .vertical-izquierda .num-celda { width: clamp(16px, 5.5vw, 32px) !important; height: clamp(16px, 5.5vw, 32px) !important; font-size: clamp(0.45rem, 2.2vw, 0.7rem) !important; }
-      .vertical-derecha .cabecera-letra, .vertical-izquierda .cabecera-letra { font-size: clamp(0.7rem, 3vw, 1rem) !important; }
-    }
-
-    .cam-box { background: black; border-radius: 8px; overflow: hidden; width: 100%; max-width: 300px; aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; }
+    .cam-box { background: black; border-radius: 8px; overflow: hidden; width: 100%; aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; }
     .cam-box video, .cam-box iframe { width: 100%; height: 100%; border: none; object-fit: cover; }
     .cam-box span { font-size: 0.75rem; color: #999; padding: 10px; text-align: center; }
+
+    @media (max-width: 480px) {
+      #contenedorPrincipal { padding: 6px; gap: 6px; }
+      #zonaTablero { padding: 2px; }
+      .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras { width: 42vw; }
+      .vertical-derecha .num-celda, .vertical-izquierda .num-celda { width: clamp(14px, 4.8vw, 28px) !important; height: clamp(14px, 4.8vw, 28px) !important; font-size: clamp(0.4rem, 2vw, 0.65rem) !important; }
+      .vertical-derecha .cabecera-letra, .vertical-izquierda .cabecera-letra { font-size: clamp(0.6rem, 2.6vw, 0.9rem) !important; }
+    }
 
     #numeroActual { font-size: clamp(2.2rem, 10vw, 5rem); font-weight: bold; text-align: center; margin: 10px 0; padding: clamp(6px,2vw,10px) clamp(14px,5vw,30px); border-radius: 12px; background: #e67e22; animation: parpadeo 1s infinite; max-width: 90vw; }
     @keyframes parpadeo { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
