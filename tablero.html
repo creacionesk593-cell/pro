@@ -13,18 +13,18 @@
        sin importar el tamaño del dispositivo (celular, PC, TV) ni su orientación. */
     #escenario { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 
-    #contenedorPrincipal { display: flex; gap: 20px; transform-origin: center center; }
+    #contenedorPrincipal { display: flex; gap: 25px; transform-origin: center center; }
     #contenedorPrincipal.horizontal { flex-direction: column; align-items: center; }
     #contenedorPrincipal.vertical-derecha { flex-direction: row; align-items: flex-start; }
     #contenedorPrincipal.vertical-izquierda { flex-direction: row-reverse; align-items: flex-start; }
 
-    #zonaTablero { display: flex; flex-direction: column; align-items: center; }
+    #zonaTablero { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
     #areaTablero { display: flex; flex-direction: column; align-items: stretch; width: max-content; }
 
-    #zonaCamaras { display: flex; gap: 10px; }
+    #zonaCamaras { display: flex; gap: 12px; flex-shrink: 0; }
     .horizontal #zonaCamaras { flex-direction: row; margin-top: 15px; }
     .horizontal #zonaCamaras .cam-box { width: 340px; }
-    .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras { flex-direction: column; width: 300px; }
+    .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras { flex-direction: column; width: 380px; }
 
     .cam-box { background: black; border-radius: 10px; overflow: hidden; width: 100%; aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; position: relative; }
     .cam-box video, .cam-box iframe { width: 100%; height: 100%; border: none; object-fit: cover; }
@@ -43,9 +43,11 @@
     .num-celda.marcado { background: #2ecc71; color: #0f172a; }
     .num-celda.ultimo { animation: parpadeo 1s infinite; background: #e67e22; color: white; }
 
-    /* Cuadrícula simple: 15 columnas x 5 filas, números en orden, como cartilla clásica */
-    #grillaBingo.simple { display: grid; grid-template-columns: repeat(15, 42px); gap: 5px; }
-    #grillaBingo.simple .num-celda { width: 42px; height: 42px; font-size: 14px; }
+    /* Cuadrícula simple: 15 números por fila, con la letra B-I-N-G-O al inicio de cada fila */
+    #grillaBingo.simple { display: flex; flex-direction: column; gap: 6px; }
+    .fila-simple { display: flex; gap: 6px; align-items: center; }
+    .letra-fila-simple { width: 40px; height: 42px; display: flex; align-items: center; justify-content: center; background: #0ea5e9; color: white; font-weight: bold; font-size: 18px; border-radius: 6px; flex-shrink: 0; }
+    #grillaBingo.simple .num-celda { width: 42px; height: 42px; font-size: 14px; flex-shrink: 0; }
 
     /* Plantilla "Show": cámara 1 grande + resto pequeñas, arriba del todo (modo horizontal) */
     .plantilla-show.horizontal #zonaCamaras { order: -1; flex-direction: row; align-items: flex-start; margin-bottom: 15px; }
@@ -205,9 +207,11 @@
     function construirGrillaSimple() {
       const cont = document.getElementById("grillaBingo");
       cont.classList.add("simple");
-      let celdas = "";
-      for (let n = 1; n <= 75; n++) celdas += `<div class="num-celda" id="pub-num-${n}">${n}</div>`;
-      cont.innerHTML = celdas;
+      cont.innerHTML = LETRAS.map(col => {
+        let celdas = `<div class="letra-fila-simple">${col.letra}</div>`;
+        for (let n = col.desde; n <= col.hasta; n++) celdas += `<div class="num-celda" id="pub-num-${n}">${n}</div>`;
+        return `<div class="fila-simple">${celdas}</div>`;
+      }).join("");
     }
 
     let ESTILO_GRID_ACTUAL = null;
@@ -280,6 +284,19 @@
       }
 
       cont.className = clase + (plantilla === 'show' ? ' plantilla-show' : '');
+
+      // En modo vertical, el panel de "Juegos" se acomoda junto a la cámara
+      // (no debajo de todo el tablero), para que el conjunto sea menos alto
+      // y aproveche mejor la pantalla.
+      const panelJuegos = document.getElementById("panelJuegos");
+      const zonaCamaras = document.getElementById("zonaCamaras");
+      const areaTablero = document.getElementById("areaTablero");
+
+      if (clase === 'vertical-derecha' || clase === 'vertical-izquierda') {
+        zonaCamaras.appendChild(panelJuegos);
+      } else {
+        areaTablero.appendChild(panelJuegos);
+      }
     }
 
     /* =========================================================================
