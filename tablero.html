@@ -170,7 +170,7 @@
         const rect = contenido.getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0) return;
 
-        const margen = 0.97; // pequeño respiro para que no toque los bordes
+        const margen = 0.94; // respiro más notorio para que nada toque los bordes de la pantalla
         const escala = Math.min(
           (window.innerWidth * margen) / rect.width,
           (window.innerHeight * margen) / rect.height
@@ -321,12 +321,14 @@
     function convertirUrlEmbebible(url) {
       if (!url) return url;
 
+      const parametrosLimpios = "autoplay=1&mute=1&fs=0&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&playsinline=1";
+
       let m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/live\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]+)/);
-      if (m) return `https://www.youtube.com/embed/${m[1]}?autoplay=1&mute=1`;
-      if (url.includes("youtube.com/embed/")) return url;
+      if (m) return `https://www.youtube-nocookie.com/embed/${m[1]}?${parametrosLimpios}`;
+      if (url.includes("youtube.com/embed/") || url.includes("youtube-nocookie.com/embed/")) return url;
 
       let mCanal = url.match(/youtube\.com\/channel\/([a-zA-Z0-9_-]+)\/live/);
-      if (mCanal) return `https://www.youtube.com/embed/live_stream?channel=${mCanal[1]}&autoplay=1&mute=1`;
+      if (mCanal) return `https://www.youtube-nocookie.com/embed/live_stream?channel=${mCanal[1]}&${parametrosLimpios}`;
 
       if (url.includes("facebook.com") && !url.includes("plugins/video.php")) {
         return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&show_text=false&autoplay=true`;
@@ -335,15 +337,43 @@
       return url;
     }
 
-    function activarCamaraLocal(boton) {
+    function activarCamaraLocal(boton, rotacion) {
       const box = boton.closest(".cam-box");
       box.innerHTML = "";
       const video = document.createElement("video");
       video.autoplay = true; video.muted = true; video.playsInline = true;
       box.appendChild(video);
       navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } })
-        .then(stream => { video.srcObject = stream; })
+        .then(stream => {
+          video.srcObject = stream;
+          aplicarRotacionCamara(box, video, rotacion || 0);
+        })
         .catch(() => { box.innerHTML = '<span>Sin acceso a la cámara de este dispositivo.</span>'; });
+    }
+
+    // Gira la imagen de la cámara (útil cuando VDO.Ninja/OBS entrega el video
+    // rotado). Para 90°/270° intercambia ancho y alto para llenar bien el
+    // recuadro sin verse estirado, y se recalcula si el recuadro cambia de tamaño.
+    function aplicarRotacionCamara(box, elemento, grados) {
+      if (!grados || grados === 0) return;
+
+      const ajustar = () => {
+        const w = box.clientWidth, h = box.clientHeight;
+        if (grados === 180) {
+          elemento.style.transform = "rotate(180deg)";
+        } else {
+          elemento.style.position = "absolute";
+          elemento.style.top = "50%";
+          elemento.style.left = "50%";
+          elemento.style.width = h + "px";
+          elemento.style.height = w + "px";
+          elemento.style.marginLeft = (-h / 2) + "px";
+          elemento.style.marginTop = (-w / 2) + "px";
+          elemento.style.transform = `rotate(${grados}deg)`;
+        }
+      };
+      ajustar();
+      new ResizeObserver(ajustar).observe(box);
     }
 
     function montarCamaras(camaras) {
@@ -363,7 +393,7 @@
         if (cam.tipo === "dispositivo") {
           box.innerHTML = `
             <div style="text-align:center; padding:10px;">
-              <button onclick="activarCamaraLocal(this)" style="background:#e67e22; color:white; border:none; padding:10px 14px; border-radius:6px; cursor:pointer; font-size:14px;">
+              <button onclick="activarCamaraLocal(this, ${cam.rotacion || 0})" style="background:#e67e22; color:white; border:none; padding:10px 14px; border-radius:6px; cursor:pointer; font-size:14px;">
                 🎥 Activar cámara de este dispositivo
               </button>
               <p style="font-size:12px; color:#999; margin-top:8px;">Solo toca esto si ESTE dispositivo es la pantalla que transmite en vivo. Los participantes no deben tocarlo.</p>
@@ -371,15 +401,9 @@
         } else if (cam.tipo === "enlace" && cam.url) {
           const iframe = document.createElement("iframe");
           iframe.src = convertirUrlEmbebible(cam.url);
-          iframe.allow = "camera; microphone; autoplay; fullscreen";
+          iframe.allow = "autoplay; camera; microphone; encrypted-media; fullscreen; picture-in-picture";
           box.appendChild(iframe);
-
-          if (cam.url.includes("youtube.com") || cam.url.includes("youtu.be")) {
-            const aviso = document.createElement("div");
-            aviso.style.cssText = "position:absolute; bottom:2px; left:2px; right:2px; font-size:11px; color:#f39c12; background:rgba(0,0,0,0.6); padding:2px 4px; border-radius:4px; text-align:center; pointer-events:none;";
-            aviso.innerText = "Si no carga: el dueño del video desactivó \"permitir insertar\" en YouTube, o el enlace no es válido.";
-            box.appendChild(aviso);
-          }
+          aplicarRotacionCamara(box, iframe, cam.rotacion || 0);
         }
       });
 
