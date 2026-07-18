@@ -23,8 +23,8 @@
 
     #zonaCamaras { display: flex; gap: 10px; }
     .horizontal #zonaCamaras { flex-direction: row; flex-wrap: wrap; margin-top: 15px; width: 100%; max-width: 480px; }
-    .horizontal #zonaCamaras .cam-box { flex: 1 1 calc(50% - 5px); }
-    .horizontal #zonaCamaras .cam-box:first-child { flex: 1 0 100%; }
+    .horizontal #zonaCamaras .cam-box { flex: 0 1 calc(50% - 5px); max-width: calc(50% - 5px); }
+    .horizontal #zonaCamaras .cam-box:first-child { flex: 1 0 100%; max-width: 100%; }
     .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras { flex-direction: column; width: 300px; }
     .vertical-derecha #zonaCamaras .cam-box, .vertical-izquierda #zonaCamaras .cam-box { width: 100%; }
 
