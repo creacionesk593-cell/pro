@@ -51,8 +51,26 @@
 
     /* Plantilla "Show": cámara 1 grande + resto pequeñas, arriba del todo (modo horizontal) */
     .plantilla-show.horizontal #zonaCamaras { order: -1; flex-direction: row; align-items: flex-start; margin-bottom: 15px; }
-    .plantilla-show #zonaCamaras .cam-box:first-child { width: 420px; aspect-ratio: 16/9; }
-    .plantilla-show #zonaCamaras .cam-box:not(:first-child) { width: 160px; }
+    .plantilla-show.horizontal #zonaCamaras .cam-box:first-child { width: 420px; aspect-ratio: 16/9; }
+    .plantilla-show.horizontal #zonaCamaras .cam-box:not(:first-child) { width: 160px; }
+
+    /* En modo vertical, TODAS las cámaras son del mismo tamaño (apiladas), sin importar la plantilla */
+    .vertical-derecha #zonaCamaras .cam-box, .vertical-izquierda #zonaCamaras .cam-box { width: 100%; }
+
+    /* Cuando el celular está en horizontal (pantalla ancha y baja), las cámaras
+       2 y 3 se acomodan a la DERECHA de la cámara 1 en vez de apilarse debajo,
+       aprovechando mejor el espacio ancho disponible. */
+    @media (orientation: landscape) and (max-height: 500px) {
+      .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras {
+        flex-direction: row;
+        flex-wrap: wrap;
+        width: auto;
+        max-width: 480px;
+      }
+      .vertical-derecha #zonaCamaras .cam-box, .vertical-izquierda #zonaCamaras .cam-box {
+        width: 220px;
+      }
+    }
 
     #panelJuegos { margin-top: 20px; width: 100%; text-align: center; }
     #panelJuegos h4 { text-align:center; margin-bottom:10px; }
@@ -172,7 +190,7 @@
         const rect = contenido.getBoundingClientRect();
         if (!rect.width || !rect.height) { contenido.style.transform = "scale(1)"; return; }
 
-        const margen = 0.90; // respiro amplio para que nada quede cortado por el borde
+        const margen = 0.85; // respiro amplio para que nada quede cortado por el borde
         let escala = Math.min(
           (window.innerWidth * margen) / rect.width,
           (window.innerHeight * margen) / rect.height
