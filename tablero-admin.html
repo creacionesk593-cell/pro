@@ -50,6 +50,23 @@
       </div>
     </div>
 
+    <div class="seccion" style="border-left:4px solid #e67e22;">
+      <h3>🔒 Enlace privado para calibrar la cámara</h3>
+      <p style="font-size:0.85rem; color:#7f8c8d;">
+        Esta pantalla se ve exactamente igual a la pública, pero <strong>requiere iniciar sesión como administrador</strong> — nadie más puede abrirla, ni siquiera con el enlace, sin la contraseña.
+        Úsala tú mismo para calibrar cómo se ve la cámara antes de mostrar el enlace público.
+      </p>
+      <div class="caja-link">
+        <input type="text" id="linkPrivado" readonly>
+        <button class="accion" style="margin:0; width:auto; background:#e67e22;" onclick="copiarLinkPrivado()">Copiar</button>
+        <button class="accion" style="margin:0; width:auto; background:#3498db;" onclick="window.open(document.getElementById('linkPrivado').value, '_blank')">Abrir</button>
+      </div>
+      <p style="font-size:0.8rem; color:#7f8c8d; margin-top:10px;">
+        ¿Quieres que otra persona (ej. quien maneja la cámara) también pueda calibrar sin darle tu contraseña de admin?
+        Créale su propia cuenta de administrador desde este mismo panel — así puede entrar a este enlace con su propio usuario.
+      </p>
+    </div>
+
     <div class="seccion">
       <h3>🎲 Marcar Números</h3>
       <label style="display:flex; align-items:center; gap:8px; font-weight:bold;">
@@ -140,6 +157,9 @@
       const slug = acceso.tenant ? acceso.tenant.slug : '';
       const baseTablero = window.location.origin + window.location.pathname.replace('tablero-admin.html', 'tablero.html');
       document.getElementById("linkPublico").value = baseTablero + '?tenant=' + encodeURIComponent(slug);
+
+      const basePreview = window.location.origin + window.location.pathname.replace('tablero-admin.html', 'tablero-preview.html');
+      document.getElementById("linkPrivado").value = basePreview + '?tenant=' + encodeURIComponent(slug);
 
       construirGridNumeros();
       construirSlotsCamaras();
@@ -308,6 +328,12 @@
       const input = document.getElementById("linkPublico");
       input.select();
       navigator.clipboard.writeText(input.value).then(() => alert("✅ Enlace copiado."));
+    }
+
+    function copiarLinkPrivado() {
+      const input = document.getElementById("linkPrivado");
+      input.select();
+      navigator.clipboard.writeText(input.value).then(() => alert("✅ Enlace privado copiado. Recuerda: quien lo abra debe iniciar sesión como admin."));
     }
 
     async function reiniciarPartida() {
