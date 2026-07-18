@@ -24,7 +24,7 @@
     #zonaCamaras { display: flex; gap: 10px; }
     .horizontal #zonaCamaras { flex-direction: row; margin-top: 15px; }
     .horizontal #zonaCamaras .cam-box { width: 340px; }
-    .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras { flex-direction: column; width: 300px; }
+    .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras { flex-direction: row; flex-wrap: wrap; width: 380px; align-content: flex-start; }
 
     .cam-box { background: black; border-radius: 10px; overflow: hidden; width: 100%; aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; position: relative; }
     .cam-box video, .cam-box iframe { width: 100%; height: 100%; border: none; object-fit: cover; }
@@ -55,22 +55,8 @@
     .plantilla-show.horizontal #zonaCamaras .cam-box:not(:first-child) { width: 160px; }
 
     /* En modo vertical, TODAS las cámaras son del mismo tamaño (apiladas), sin importar la plantilla */
-    .vertical-derecha #zonaCamaras .cam-box, .vertical-izquierda #zonaCamaras .cam-box { width: 100%; }
-
-    /* Cuando el celular está en horizontal (pantalla ancha y baja), las cámaras
-       2 y 3 se acomodan a la DERECHA de la cámara 1 en vez de apilarse debajo,
-       aprovechando mejor el espacio ancho disponible. */
-    @media (orientation: landscape) and (max-height: 500px) {
-      .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras {
-        flex-direction: row;
-        flex-wrap: wrap;
-        width: auto;
-        max-width: 480px;
-      }
-      .vertical-derecha #zonaCamaras .cam-box, .vertical-izquierda #zonaCamaras .cam-box {
-        width: 220px;
-      }
-    }
+    .vertical-derecha #zonaCamaras .cam-box, .vertical-izquierda #zonaCamaras .cam-box { flex: 1 1 calc(50% - 5px); }
+    .vertical-derecha #zonaCamaras .cam-box:first-child, .vertical-izquierda #zonaCamaras .cam-box:first-child { flex: 1 0 100%; }
 
     #panelJuegos { margin-top: 20px; width: 100%; text-align: center; }
     #panelJuegos h4 { text-align:center; margin-bottom:10px; }
