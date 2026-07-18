@@ -11,9 +11,9 @@
     /* El "escenario" ocupa toda la pantalla; adentro, el tablero se escala
        automáticamente (por JS) para llenar el ancho Y el alto disponibles,
        sin importar el tamaño del dispositivo (celular, PC, TV) ni su orientación. */
-    #escenario { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    #escenario { position: fixed; inset: 0; display: flex; align-items: center; justify-content: flex-start; overflow: hidden; }
 
-    #contenedorPrincipal { display: flex; gap: 20px; transform-origin: center center; max-width: 100vw; max-height: 100vh; }
+    #contenedorPrincipal { display: flex; gap: 20px; transform-origin: left center; max-width: 100vw; max-height: 100vh; }
     #contenedorPrincipal.horizontal { flex-direction: column; align-items: center; }
     #contenedorPrincipal.vertical-derecha { flex-direction: row; align-items: flex-start; }
     #contenedorPrincipal.vertical-izquierda { flex-direction: row-reverse; align-items: flex-start; }
@@ -170,13 +170,16 @@
       // Espera un frame para que el navegador recalcule el tamaño natural
       requestAnimationFrame(() => {
         const rect = contenido.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) return;
+        if (!rect.width || !rect.height) { contenido.style.transform = "scale(1)"; return; }
 
         const margen = 0.90; // respiro amplio para que nada quede cortado por el borde
-        const escala = Math.min(
+        let escala = Math.min(
           (window.innerWidth * margen) / rect.width,
           (window.innerHeight * margen) / rect.height
         );
+
+        // Protección: nunca dejar que la escala sea inválida (0, negativa, NaN, infinita)
+        if (!isFinite(escala) || escala <= 0) escala = 1;
 
         contenido.style.transform = `scale(${escala})`;
       });
