@@ -51,19 +51,27 @@
     </div>
 
     <div class="seccion" style="border-left:4px solid #e67e22;">
-      <h3>🔒 Enlace privado para calibrar la cámara</h3>
+      <h3>🔒 Vista previa temporal para calibrar la cámara</h3>
       <p style="font-size:0.85rem; color:#7f8c8d;">
-        Esta pantalla se ve exactamente igual a la pública, pero <strong>requiere iniciar sesión como administrador</strong> — nadie más puede abrirla, ni siquiera con el enlace, sin la contraseña.
-        Úsala tú mismo para calibrar cómo se ve la cámara antes de mostrar el enlace público.
+        Esta pantalla se ve igual a la pública, pero funciona <strong>solo por tiempo limitado</strong> y muestra la cámara aunque el tablero todavía no esté activo para el público. Ideal para calibrar antes del evento.
       </p>
       <div class="caja-link">
         <input type="text" id="linkPrivado" readonly>
         <button class="accion" style="margin:0; width:auto; background:#e67e22;" onclick="copiarLinkPrivado()">Copiar</button>
         <button class="accion" style="margin:0; width:auto; background:#3498db;" onclick="window.open(document.getElementById('linkPrivado').value, '_blank')">Abrir</button>
       </div>
+
+      <div style="display:flex; align-items:center; gap:15px; margin-top:15px; flex-wrap:wrap;">
+        <label style="display:flex; align-items:center; gap:8px; font-weight:bold; cursor:pointer;">
+          <input type="checkbox" id="chkPreviewActivo" style="width:auto;" onchange="alternarPreview()">
+          Activar vista previa por
+        </label>
+        <input type="number" id="minutosPreview" min="1" max="180" value="10" style="width:80px; padding:8px; border:1px solid #ccc; border-radius:6px;">
+        <span>minutos</span>
+        <span id="estadoPreview" style="font-size:0.85rem; color:#7f8c8d;"></span>
+      </div>
       <p style="font-size:0.8rem; color:#7f8c8d; margin-top:10px;">
-        ¿Quieres que otra persona (ej. quien maneja la cámara) también pueda calibrar sin darle tu contraseña de admin?
-        Créale su propia cuenta de administrador desde este mismo panel — así puede entrar a este enlace con su propio usuario.
+        Al marcar la casilla, cualquiera con el enlace puede verlo durante esos minutos; al desmarcarla, se corta el acceso de inmediato. Si necesitas más tiempo, vuelve a marcarla (puedes cambiar el número de minutos antes).
       </p>
     </div>
 
@@ -261,6 +269,67 @@
         document.getElementById("camTipo" + i).value = cam.tipo || "";
         document.getElementById("camUrl" + i).value = cam.url || "";
         document.getElementById("camRotacion" + i).value = cam.rotacion || "0";
+      }
+
+      actualizarEstadoPreview();
+    }
+
+    let INTERVALO_ESTADO_PREVIEW = null;
+
+    function actualizarEstadoPreview() {
+      const activo = !!TABLERO_ACTUAL.preview_activo;
+      const expira = TABLERO_ACTUAL.preview_expira ? new Date(TABLERO_ACTUAL.preview_expira) : null;
+      const vigente = activo && expira && expira.getTime() > Date.now();
+
+      document.getElementById("chkPreviewActivo").checked = vigente;
+
+      clearInterval(INTERVALO_ESTADO_PREVIEW);
+      const estadoEl = document.getElementById("estadoPreview");
+
+      if (vigente) {
+        const actualizarTexto = () => {
+          const restanteMs = expira.getTime() - Date.now();
+          if (restanteMs <= 0) {
+            estadoEl.innerText = "⏹️ Venció.";
+            document.getElementById("chkPreviewActivo").checked = false;
+            clearInterval(INTERVALO_ESTADO_PREVIEW);
+            return;
+          }
+          const totalSeg = Math.floor(restanteMs / 1000);
+          const min = Math.floor(totalSeg / 60);
+          const seg = totalSeg % 60;
+          estadoEl.innerText = `🟢 Activa — quedan ${min}:${seg.toString().padStart(2, '0')}`;
+        };
+        actualizarTexto();
+        INTERVALO_ESTADO_PREVIEW = setInterval(actualizarTexto, 1000);
+      } else {
+        estadoEl.innerText = "";
+      }
+    }
+
+    async function alternarPreview() {
+      const activar = document.getElementById("chkPreviewActivo").checked;
+
+      if (activar) {
+        const minutos = parseInt(document.getElementById("minutosPreview").value, 10) || 10;
+        const expira = new Date(Date.now() + minutos * 60000).toISOString();
+
+        const { error } = await _supabase.from('tablero_bingo').update({ preview_activo: true, preview_expira: expira }).eq('tenant_id', window.MI_TENANT_ID);
+        if (error) { alert("❌ " + error.message); document.getElementById("chkPreviewActivo").checked = false; return; }
+
+        TABLERO_ACTUAL.preview_activo = true;
+        TABLERO_ACTUAL.preview_expira = expira;
+        actualizarEstadoPreview();
+
+        try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Activar vista previa de cámara", p_detalle: `${minutos} minutos` }); } catch(e) {}
+      } else {
+        const { error } = await _supabase.from('tablero_bingo').update({ preview_activo: false }).eq('tenant_id', window.MI_TENANT_ID);
+        if (error) { alert("❌ " + error.message); return; }
+
+        TABLERO_ACTUAL.preview_activo = false;
+        actualizarEstadoPreview();
+
+        try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Desactivar vista previa de cámara", p_detalle: "" }); } catch(e) {}
       }
     }
 
