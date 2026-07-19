@@ -65,13 +65,17 @@
   </style>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="conexion.js"></script>
-  <script src="auth.js"></script>
+  <script src="conexion.js"></script>
 </head>
 <body>
   <div id="etiquetaPrivada" style="position:fixed; top:10px; left:10px; background:#e67e22; color:white; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:bold; z-index:9999;">
-    🔒 Vista Previa Privada (calibración)
+    🔒 Vista Previa (calibración) — <span id="contadorTiempo">--:--</span>
   </div>
-  <button onclick="cerrarSesion()" style="position:fixed; top:10px; right:10px; background:#2c3e50; color:white; border:none; padding:8px 14px; border-radius:6px; cursor:pointer; z-index:9999; font-size:13px;">Salir</button>
+
+  <div id="pantallaExpirada" style="display:none; position:fixed; inset:0; background:#0f172a; color:white; flex-direction:column; align-items:center; justify-content:center; text-align:center; font-size:1.4rem; padding:20px;">
+    ⏳ La vista previa no está activa o ya venció.<br>
+    <span style="font-size:1rem; color:#94a3b8; margin-top:10px;">Pide al administrador que la active de nuevo desde su panel.</span>
+  </div>
 
   <div id="escenario">
     <div id="contenedorPrincipal" class="horizontal">
@@ -125,28 +129,30 @@
     ];
 
     let MI_TENANT_ID = null;
+    let INTERVALO_CONTADOR = null;
 
     window.addEventListener('load', async () => {
-      // Esta página es privada: exige haber iniciado sesión como admin.
-      // Se usa el tenant del propio admin logueado (no el de la URL),
-      // así nadie puede ver el de otro cliente cambiando el enlace.
-      const acceso = await requerirSesion('admin');
-      if (!acceso) return;
+      const params = new URLSearchParams(window.location.search);
+      const slug = params.get("tenant");
+      if (!slug) { mostrarExpirada(); return; }
 
-      MI_TENANT_ID = acceso.perfil.tenant_id;
+      const { data: tenant } = await _supabase.from('tenants').select('id').eq('slug', slug).maybeSingle();
+      if (!tenant) { mostrarExpirada(); return; }
+
+      MI_TENANT_ID = tenant.id;
 
       const { data: tablero } = await _supabase.from('tablero_bingo').select('*').eq('tenant_id', MI_TENANT_ID).maybeSingle();
-      pintarTablero(tablero || {});
+      procesarTablero(tablero || {});
 
       await cargarJuegosPublico();
 
-      _supabase.channel('tablero_privado_' + MI_TENANT_ID)
+      _supabase.channel('tablero_preview_' + MI_TENANT_ID)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'tablero_bingo', filter: `tenant_id=eq.${MI_TENANT_ID}` }, (payload) => {
-          if (payload.new) pintarTablero(payload.new);
+          if (payload.new) procesarTablero(payload.new);
         })
         .subscribe();
 
-      _supabase.channel('juegos_privado_' + MI_TENANT_ID)
+      _supabase.channel('juegos_preview_' + MI_TENANT_ID)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'tablero_juegos', filter: `tenant_id=eq.${MI_TENANT_ID}` }, () => {
           cargarJuegosPublico();
           ajustarEscala();
@@ -157,9 +163,46 @@
       window.addEventListener('orientationchange', () => setTimeout(ajustarEscala, 200));
     });
 
-    function mostrarMensajeEspera(texto) {
-      document.getElementById("mensajeEspera").style.display = "block";
-      document.getElementById("mensajeEspera").innerText = texto;
+    // Decide si la vista previa está activa y vigente en el tiempo, sin
+    // importar el interruptor normal de "Mostrar tablero al público".
+    function procesarTablero(tablero) {
+      const activo = !!tablero.preview_activo;
+      const expira = tablero.preview_expira ? new Date(tablero.preview_expira) : null;
+      const vigente = activo && expira && expira.getTime() > Date.now();
+
+      if (!vigente) {
+        mostrarExpirada();
+        return;
+      }
+
+      document.getElementById("pantallaExpirada").style.display = "none";
+      document.getElementById("escenario").style.display = "flex";
+
+      iniciarContador(expira);
+
+      // Fuerza a que siempre se muestre el contenido del tablero (ignora
+      // "visible_publico"), ya que esta pantalla es solo para calibración.
+      pintarTablero({ ...tablero, visible_publico: true });
+    }
+
+    function iniciarContador(expira) {
+      clearInterval(INTERVALO_CONTADOR);
+      const actualizar = () => {
+        const restanteMs = expira.getTime() - Date.now();
+        if (restanteMs <= 0) { mostrarExpirada(); return; }
+        const totalSeg = Math.floor(restanteMs / 1000);
+        const min = Math.floor(totalSeg / 60);
+        const seg = totalSeg % 60;
+        document.getElementById("contadorTiempo").innerText = `${min}:${seg.toString().padStart(2, '0')}`;
+      };
+      actualizar();
+      INTERVALO_CONTADOR = setInterval(actualizar, 1000);
+    }
+
+    function mostrarExpirada() {
+      clearInterval(INTERVALO_CONTADOR);
+      document.getElementById("escenario").style.display = "none";
+      document.getElementById("pantallaExpirada").style.display = "flex";
       ajustarEscala();
     }
 
