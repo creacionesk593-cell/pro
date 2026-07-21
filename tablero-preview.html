@@ -96,6 +96,19 @@
 
   <button id="btnAjustesVista" onclick="toggleAjustesVista()" title="Ajustar cómo se ve en tu pantalla" style="position:fixed; bottom:14px; right:14px; width:46px; height:46px; border-radius:50%; background:#2c3e50; color:white; border:none; font-size:1.3rem; cursor:pointer; z-index:9998; box-shadow:0 2px 8px rgba(0,0,0,0.4);">⚙️</button>
 
+  <button id="btnAltavoz" onclick="toggleControlVolumen()" style="display:none; position:fixed; bottom:14px; right:68px; width:46px; height:46px; border-radius:50%; background:#2c3e50; color:white; border:none; font-size:1.3rem; cursor:pointer; z-index:9998; box-shadow:0 2px 8px rgba(0,0,0,0.4);">🔊</button>
+
+  <div id="panelVolumen" style="display:none; position:fixed; bottom:70px; right:68px; background:#1e293b; padding:16px; border-radius:10px; width:220px; z-index:9998; box-shadow:0 4px 15px rgba(0,0,0,0.5); font-size:0.85rem; color:white;">
+    <strong>🔊 Sonido Global</strong>
+    <label style="display:flex; align-items:center; gap:8px; margin-top:10px; cursor:pointer;">
+      <input type="checkbox" id="chkMutearAudio" style="width:auto;" onchange="aplicarVolumenAudio()"> Silenciar
+    </label>
+    <input type="range" id="sliderVolumen" min="0" max="100" value="80" style="width:100%; margin-top:10px;" oninput="aplicarVolumenAudio()">
+    <div style="display:flex; justify-content:space-between; font-size:0.7rem; color:#94a3b8;"><span>0</span><span id="valorVolumen">80</span><span>100</span></div>
+  </div>
+
+  <iframe id="iframeAudioGlobal" style="display:none; width:0; height:0; border:none;" allow="autoplay"></iframe>
+
   <div id="panelAjustesVista" style="display:none; position:fixed; bottom:70px; right:14px; background:#1e293b; padding:16px; border-radius:10px; width:250px; z-index:9998; box-shadow:0 4px 15px rgba(0,0,0,0.5); font-size:0.85rem;">
     <strong>Ajustar vista (solo en tu pantalla)</strong>
     <p style="font-size:0.75rem; color:#94a3b8; margin:6px 0 12px;">Esto no afecta a nadie más, solo cambia cómo lo ves tú en este dispositivo.</p>
@@ -376,10 +389,11 @@
 
     let camarasYaMontadas = "";
     // Convierte enlaces normales de YouTube/Facebook a su versión "embebible"
-    function convertirUrlEmbebible(url) {
+    function convertirUrlEmbebible(url, silenciado) {
       if (!url) return url;
 
-      const parametrosLimpios = "autoplay=1&mute=1&fs=0&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&playsinline=1";
+      const mute = silenciado === false ? "0" : "1";
+      const parametrosLimpios = `autoplay=1&mute=${mute}&fs=0&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&playsinline=1`;
 
       let m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/live\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]+)/);
       if (m) return `https://www.youtube-nocookie.com/embed/${m[1]}?${parametrosLimpios}`;
@@ -390,6 +404,13 @@
 
       if (url.includes("facebook.com") && !url.includes("plugins/video.php")) {
         return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&show_text=false&autoplay=true`;
+      }
+
+      // VDO.Ninja / OBS.Ninja: agrega mute/volumen si corresponde
+      if (url.includes("vdo.ninja") || url.includes("obs.ninja")) {
+        let urlConParams = url;
+        urlConParams += (urlConParams.includes("?") ? "&" : "?") + (silenciado === false ? "" : "mute");
+        return urlConParams;
       }
 
       return url;
@@ -442,7 +463,10 @@
       const zona = document.getElementById("zonaCamaras");
       zona.innerHTML = "";
 
-      camaras.filter(c => c.activa && c.tipo).forEach((cam, i) => {
+      const camarasVideo = camaras.slice(0, 3);
+      const camaraAudio = camaras[3];
+
+      camarasVideo.filter(c => c.activa && c.tipo).forEach((cam, i) => {
         const box = document.createElement("div");
         box.className = "cam-box";
         box.id = "camBox" + i;
@@ -458,18 +482,62 @@
             </div>`;
         } else if (cam.tipo === "enlace" && cam.url) {
           const iframe = document.createElement("iframe");
-          iframe.src = convertirUrlEmbebible(cam.url);
+          iframe.src = convertirUrlEmbebible(cam.url, cam.muted);
           iframe.allow = "autoplay; camera; microphone; encrypted-media; fullscreen; picture-in-picture";
           box.appendChild(iframe);
           aplicarRotacionCamara(box, iframe, cam.rotacion || 0);
         }
       });
 
+      // Cámara 4: solo sonido — se muestra como control de volumen, no como video
+      montarAudioGlobal(camaraAudio);
+
       ajustarEscala();
       // Recalcula de nuevo un instante después, por si el video/iframe
       // tarda en asentar su tamaño real (evita que algo quede cortado).
       setTimeout(ajustarEscala, 400);
       setTimeout(ajustarEscala, 1200);
+    }
+
+    function montarAudioGlobal(cam) {
+      const btn = document.getElementById("btnAltavoz");
+
+      if (!cam || !cam.activa || !cam.tipo || !cam.url) {
+        btn.style.display = "none";
+        document.getElementById("panelVolumen").style.display = "none";
+        document.getElementById("iframeAudioGlobal").src = "";
+        return;
+      }
+
+      btn.style.display = "block";
+      document.getElementById("chkMutearAudio").checked = !!cam.muted;
+      aplicarVolumenAudio(cam.url);
+    }
+
+    function toggleControlVolumen() {
+      const panel = document.getElementById("panelVolumen");
+      panel.style.display = panel.style.display === "block" ? "none" : "block";
+    }
+
+    function aplicarVolumenAudio(urlBase) {
+      const url = urlBase || (ULTIMO_TABLERO_RECIBIDO && ULTIMO_TABLERO_RECIBIDO.camaras && ULTIMO_TABLERO_RECIBIDO.camaras[3] ? ULTIMO_TABLERO_RECIBIDO.camaras[3].url : null);
+      if (!url) return;
+
+      const silenciado = document.getElementById("chkMutearAudio").checked;
+      const volumen = document.getElementById("sliderVolumen").value;
+      document.getElementById("valorVolumen").innerText = volumen;
+
+      let urlFinal = convertirUrlEmbebible(url, silenciado ? true : false);
+      if (!silenciado && (url.includes("vdo.ninja") || url.includes("obs.ninja"))) {
+        urlFinal += `&volume=${volumen}`;
+      }
+
+      const iframe = document.getElementById("iframeAudioGlobal");
+      // Evita recargar el audio innecesariamente si no cambió nada
+      if (iframe.dataset.urlActual !== urlFinal) {
+        iframe.src = urlFinal;
+        iframe.dataset.urlActual = urlFinal;
+      }
     }
   </script>
 </body>
