@@ -406,11 +406,14 @@
         return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&show_text=false&autoplay=true`;
       }
 
-      // VDO.Ninja / OBS.Ninja: agrega mute/volumen si corresponde
+      // VDO.Ninja / OBS.Ninja: solo se silencia si el admin lo marcó explícitamente
       if (url.includes("vdo.ninja") || url.includes("obs.ninja")) {
-        let urlConParams = url;
-        urlConParams += (urlConParams.includes("?") ? "&" : "?") + (silenciado === false ? "" : "mute");
-        return urlConParams;
+        if (silenciado === true) {
+          let urlConParams = url;
+          urlConParams += (urlConParams.includes("?") ? "&" : "?") + "mute";
+          return urlConParams;
+        }
+        return url;
       }
 
       return url;
@@ -495,6 +498,504 @@
       ajustarEscala();
       // Recalcula de nuevo un instante después, por si el video/iframe
       // tarda en asentar su tamaño real (evita que algo quede cortado).
+      setTimeout(ajustarEscala, 400);
+      setTimeout(ajustarEscala, 1200);
+    }
+
+    function montarAudioGlobal(cam) {
+      const btn = document.getElementById("btnAltavoz");
+
+      if (!cam || !cam.activa || !cam.tipo || !cam.url) {
+        btn.style.display = "none";
+        document.getElementById("panelVolumen").style.display = "none";
+        document.getElementById("iframeAudioGlobal").src = "";
+        return;
+      }
+
+      btn.style.display = "block";
+      document.getElementById("chkMutearAudio").checked = !!cam.muted;
+      aplicarVolumenAudio(cam.url);
+    }
+
+    function toggleControlVolumen() {
+      const panel = document.getElementById("panelVolumen");
+      panel.style.display = panel.style.display === "block" ? "none" : "block";
+    }
+
+    function aplicarVolumenAudio(urlBase) {
+      const url = urlBase || (ULTIMO_TABLERO_RECIBIDO && ULTIMO_TABLERO_RECIBIDO.camaras && ULTIMO_TABLERO_RECIBIDO.camaras[3] ? ULTIMO_TABLERO_RECIBIDO.camaras[3].url : null);
+      if (!url) return;
+
+      const silenciado = document.getElementById("chkMutearAudio").checked;
+      const volumen = document.getElementById("sliderVolumen").value;
+      document.getElementById("valorVolumen").innerText = volumen;
+
+      let urlFinal = convertirUrlEmbebible(url, silenciado ? true : false);
+      if (!silenciado && (url.includes("vdo.ninja") || url.includes("obs.ninja"))) {
+        urlFinal += `&volume=${volumen}`;
+      }
+
+      const iframe = document.getElementById("iframeAudioGlobal");
+      // Evita recargar el audio innecesariamente si no cambió nada
+      if (iframe.dataset.urlActual !== urlFinal) {
+        iframe.src = urlFinal;
+        iframe.dataset.urlActual = urlFinal;
+      }
+    }
+  </script>
+</body>
+</html>
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Tablero en Vivo - TuBingo Pro</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; color: white; font-family: 'Segoe UI', sans-serif; }
+
+    /* El "escenario" ocupa toda la pantalla; adentro, el tablero se escala
+       automáticamente (por JS) para llenar el ancho Y el alto disponibles,
+       sin importar el tamaño del dispositivo (celular, PC, TV) ni su orientación. */
+    #escenario { position: fixed; inset: 0; display: flex; align-items: flex-start; justify-content: flex-start; overflow: hidden; }
+
+    #contenedorPrincipal { display: flex; gap: 20px; transform-origin: top left; max-width: 100vw; max-height: 100vh; }
+    #contenedorPrincipal.horizontal { flex-direction: column; align-items: center; }
+    #contenedorPrincipal.vertical-derecha { flex-direction: row; align-items: flex-start; }
+    #contenedorPrincipal.vertical-izquierda { flex-direction: row-reverse; align-items: flex-start; }
+
+    #zonaTablero { display: flex; flex-direction: column; align-items: center; }
+    #areaTablero { display: flex; flex-direction: column; align-items: stretch; width: max-content; }
+
+    #zonaCamaras { display: flex; gap: 10px; }
+    .horizontal #zonaCamaras { flex-direction: row; flex-wrap: wrap; margin-top: 15px; width: 100%; max-width: 480px; }
+    .horizontal #zonaCamaras .cam-box { flex: 0 1 calc(50% - 5px); max-width: calc(50% - 5px); }
+    .horizontal #zonaCamaras .cam-box:first-child { flex: 1 0 100%; max-width: 100%; }
+    .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras { flex-direction: column; width: 300px; }
+    .vertical-derecha #zonaCamaras .cam-box, .vertical-izquierda #zonaCamaras .cam-box { width: 100%; }
+
+    .cam-box { background: black; border-radius: 10px; overflow: hidden; width: 100%; aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; position: relative; }
+    .cam-box video, .cam-box iframe { width: 100%; height: 100%; border: none; object-fit: cover; }
+    .cam-box span { font-size: 13px; color: #999; padding: 10px; text-align: center; }
+
+    #numeroActual { display: none; }
+    @keyframes parpadeo { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+    #ultimos5 { display: flex; gap: 10px; margin-bottom: 15px; justify-content: center; }
+    .chip-ultimo { background: #34495e; padding: 8px 16px; border-radius: 22px; font-weight: bold; font-size: 17px; }
+
+    .columna-letra { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .cabecera-letra { font-size: 30px; font-weight: bold; background: #1e293b; width: 100%; text-align: center; padding: 8px; border-radius: 8px; }
+    #grillaBingo { display: flex; gap: 8px; }
+    .num-celda { width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: #1e293b; font-weight: bold; font-size: 26px; }
+    .num-celda.marcado { background: #2ecc71; color: #0f172a; }
+    .num-celda.ultimo { animation: parpadeo 1s infinite; background: #e67e22; color: white; }
+
+    /* Cuadrícula simple: 15 números por fila, con la letra B-I-N-G-O al inicio de cada fila */
+    #grillaBingo.simple { display: flex; flex-direction: column; gap: 6px; }
+    .fila-simple { display: flex; gap: 6px; align-items: center; }
+    .letra-fila-simple { width: 40px; height: 42px; display: flex; align-items: center; justify-content: center; background: #0ea5e9; color: white; font-weight: bold; font-size: 22px; border-radius: 6px; flex-shrink: 0; }
+    #grillaBingo.simple .num-celda { width: 42px; height: 42px; font-size: 20px; flex-shrink: 0; }
+
+    /* Plantilla "Show": cámara 1 grande + resto pequeñas, arriba del todo (modo horizontal) */
+    .plantilla-show.horizontal #zonaCamaras { order: -1; flex-direction: row; align-items: flex-start; margin-bottom: 15px; }
+    .plantilla-show.horizontal #zonaCamaras .cam-box:first-child { width: 420px; aspect-ratio: 16/9; }
+    .plantilla-show.horizontal #zonaCamaras .cam-box:not(:first-child) { width: 160px; }
+
+    #panelJuegos { margin-top: 20px; width: 100%; text-align: center; }
+    #panelJuegos h4 { text-align:center; margin-bottom:10px; }
+    .juego-chip { display:inline-block; padding:6px 14px; margin:4px; border-radius:20px; font-size:inherit; background:#1e293b; }
+    .juego-chip.no-disponible { background:#e74c3c; text-decoration:line-through; opacity:0.7; }
+
+    #mensajeEspera { font-size: 32px; text-align: center; opacity: 0.8; }
+  </style>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="conexion.js"></script>
+</head>
+<body>
+  <div id="escenario">
+    <div id="contenedorPrincipal" class="horizontal">
+      <div id="zonaTablero">
+        <div id="mensajeEspera" style="display:none;">⏳ Esperando inicio del juego...</div>
+        <div id="contenidoTablero" style="display:none;">
+          <div id="areaTablero">
+            <div id="numeroActual">--</div>
+            <div id="ultimos5"></div>
+            <div id="grillaBingo"></div>
+            <div id="panelJuegos"><h4>🏆 Juegos de esta partida</h4><div id="listaJuegosPublico"></div></div>
+          </div>
+        </div>
+      </div>
+      <div id="zonaCamaras"></div>
+    </div>
+  </div>
+
+  <button id="btnAjustesVista" onclick="toggleAjustesVista()" title="Ajustar cómo se ve en tu pantalla" style="position:fixed; bottom:14px; right:14px; width:46px; height:46px; border-radius:50%; background:#2c3e50; color:white; border:none; font-size:1.3rem; cursor:pointer; z-index:9998; box-shadow:0 2px 8px rgba(0,0,0,0.4);">⚙️</button>
+
+  <button id="btnAltavoz" onclick="toggleControlVolumen()" style="display:none; position:fixed; bottom:14px; right:68px; width:46px; height:46px; border-radius:50%; background:#2c3e50; color:white; border:none; font-size:1.3rem; cursor:pointer; z-index:9998; box-shadow:0 2px 8px rgba(0,0,0,0.4);">🔊</button>
+
+  <div id="panelVolumen" style="display:none; position:fixed; bottom:70px; right:68px; background:#1e293b; padding:16px; border-radius:10px; width:220px; z-index:9998; box-shadow:0 4px 15px rgba(0,0,0,0.5); font-size:0.85rem; color:white;">
+    <strong>🔊 Sonido Global</strong>
+    <label style="display:flex; align-items:center; gap:8px; margin-top:10px; cursor:pointer;">
+      <input type="checkbox" id="chkMutearAudio" style="width:auto;" onchange="aplicarVolumenAudio()"> Silenciar
+    </label>
+    <input type="range" id="sliderVolumen" min="0" max="100" value="80" style="width:100%; margin-top:10px;" oninput="aplicarVolumenAudio()">
+    <div style="display:flex; justify-content:space-between; font-size:0.7rem; color:#94a3b8;"><span>0</span><span id="valorVolumen">80</span><span>100</span></div>
+  </div>
+
+  <iframe id="iframeAudioGlobal" style="display:none; width:0; height:0; border:none;" allow="autoplay"></iframe>
+
+  <div id="panelAjustesVista" style="display:none; position:fixed; bottom:70px; right:14px; background:#1e293b; padding:16px; border-radius:10px; width:250px; z-index:9998; box-shadow:0 4px 15px rgba(0,0,0,0.5); font-size:0.85rem;">
+    <strong>Ajustar vista (solo en tu pantalla)</strong>
+    <p style="font-size:0.75rem; color:#94a3b8; margin:6px 0 12px;">Esto no afecta a nadie más, solo cambia cómo lo ves tú en este dispositivo.</p>
+
+    <label style="display:block; margin-bottom:4px;">Orientación:</label>
+    <select id="selVistaLayout" style="width:100%; padding:6px; margin-bottom:10px; border-radius:6px;">
+      <option value="admin">Usar la del organizador</option>
+      <option value="horizontal">Horizontal (cámaras abajo)</option>
+      <option value="vertical-derecha">Vertical (cámaras a la derecha)</option>
+      <option value="vertical-izquierda">Vertical (cámaras a la izquierda)</option>
+    </select>
+
+    <label style="display:block; margin-bottom:4px;">Cuadrícula:</label>
+    <select id="selVistaGrid" style="width:100%; padding:6px; margin-bottom:10px; border-radius:6px;">
+      <option value="admin">Usar la del organizador</option>
+      <option value="bingo">Columnas B-I-N-G-O</option>
+      <option value="simple">Cuadrícula simple 1-75</option>
+    </select>
+
+    <button onclick="guardarAjustesVistaLocal()" style="width:100%; padding:8px; background:#2ecc71; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">Aplicar</button>
+    <button onclick="restablecerAjustesVistaLocal()" style="width:100%; padding:8px; background:transparent; color:#94a3b8; border:1px solid #475569; border-radius:6px; cursor:pointer; margin-top:6px;">Restablecer</button>
+  </div>
+
+  <script>
+    const LETRAS = [
+      { letra: "B", desde: 1, hasta: 15 },
+      { letra: "I", desde: 16, hasta: 30 },
+      { letra: "N", desde: 31, hasta: 45 },
+      { letra: "G", desde: 46, hasta: 60 },
+      { letra: "O", desde: 61, hasta: 75 }
+    ];
+
+    let MI_TENANT_ID = null;
+
+    window.addEventListener('load', async () => {
+      const params = new URLSearchParams(window.location.search);
+      const slug = params.get("tenant");
+      if (!slug) { mostrarMensajeEspera("Falta indicar el cliente (tenant) en el enlace."); return; }
+
+      const { data: tenant } = await _supabase.from('tenants').select('id').eq('slug', slug).maybeSingle();
+      if (!tenant) { mostrarMensajeEspera("Cliente no encontrado."); return; }
+
+      MI_TENANT_ID = tenant.id;
+
+      const { data: tablero } = await _supabase.from('tablero_bingo').select('*').eq('tenant_id', MI_TENANT_ID).maybeSingle();
+      pintarTablero(tablero || {});
+
+      await cargarJuegosPublico();
+
+      _supabase.channel('tablero_publico_' + MI_TENANT_ID)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tablero_bingo', filter: `tenant_id=eq.${MI_TENANT_ID}` }, (payload) => {
+          if (payload.new) pintarTablero(payload.new);
+        })
+        .subscribe();
+
+      _supabase.channel('juegos_publico_' + MI_TENANT_ID)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tablero_juegos', filter: `tenant_id=eq.${MI_TENANT_ID}` }, () => {
+          cargarJuegosPublico();
+          ajustarEscala();
+        })
+        .subscribe();
+
+      window.addEventListener('resize', ajustarEscala);
+      window.addEventListener('orientationchange', () => setTimeout(ajustarEscala, 200));
+    });
+
+    function mostrarMensajeEspera(texto) {
+      document.getElementById("mensajeEspera").style.display = "block";
+      document.getElementById("mensajeEspera").innerText = texto;
+      ajustarEscala();
+    }
+
+    /* =========================================================================
+       ESCALADO AUTOMÁTICO A PANTALLA COMPLETA
+       El tablero se construye a un tamaño "de diseño" fijo (en píxeles), y este
+       script lo escala para llenar el ancho Y el alto disponibles de CUALQUIER
+       pantalla (celular, PC, TV) y orientación, sin cortar nada ni dejar
+       espacios vacíos.
+       ========================================================================= */
+    function ajustarEscala() {
+      const contenido = document.getElementById("contenedorPrincipal");
+      contenido.style.transform = "none";
+
+      // Espera un frame para que el navegador recalcule el tamaño natural
+      requestAnimationFrame(() => {
+        const rect = contenido.getBoundingClientRect();
+        if (!rect.width || !rect.height) { contenido.style.transform = "scale(1)"; return; }
+
+        const margen = 0.93; // respiro para que nada quede cortado por el borde
+        let escala = Math.min(
+          (window.innerWidth * margen) / rect.width,
+          (window.innerHeight * margen) / rect.height
+        );
+
+        // Protección: nunca dejar que la escala sea inválida (0, negativa, NaN, infinita)
+        if (!isFinite(escala) || escala <= 0) escala = 1;
+
+        contenido.style.transform = `scale(${escala})`;
+      });
+    }
+
+    let TAMANO_FUENTE_JUEGOS = 16;
+
+    async function cargarJuegosPublico() {
+      const { data } = await _supabase.from('tablero_juegos').select('*').eq('tenant_id', MI_TENANT_ID).order('orden', { ascending: true });
+      const cont = document.getElementById("listaJuegosPublico");
+      cont.style.fontSize = TAMANO_FUENTE_JUEGOS + "px";
+      if (!data || data.length === 0) { cont.innerHTML = ""; } else {
+        cont.innerHTML = data.map(j => `<span class="juego-chip ${j.disponible ? '' : 'no-disponible'}">${j.nombre}</span>`).join("");
+      }
+      ajustarEscala();
+    }
+
+    function construirGrilla() {
+      const cont = document.getElementById("grillaBingo");
+      cont.classList.remove("simple");
+      cont.innerHTML = LETRAS.map(col => {
+        let celdas = "";
+        for (let n = col.desde; n <= col.hasta; n++) celdas += `<div class="num-celda" id="pub-num-${n}">${n}</div>`;
+        return `<div class="columna-letra"><div class="cabecera-letra">${col.letra}</div>${celdas}</div>`;
+      }).join("");
+    }
+
+    function construirGrillaSimple() {
+      const cont = document.getElementById("grillaBingo");
+      cont.classList.add("simple");
+      cont.innerHTML = LETRAS.map(col => {
+        let celdas = `<div class="letra-fila-simple">${col.letra}</div>`;
+        for (let n = col.desde; n <= col.hasta; n++) celdas += `<div class="num-celda" id="pub-num-${n}">${n}</div>`;
+        return `<div class="fila-simple">${celdas}</div>`;
+      }).join("");
+    }
+
+    let ESTILO_GRID_ACTUAL = null;
+    let ULTIMO_TABLERO_RECIBIDO = null;
+
+    function pintarTablero(tablero) {
+      ULTIMO_TABLERO_RECIBIDO = tablero;
+      const visible = !!tablero.visible_publico;
+      document.getElementById("mensajeEspera").style.display = visible ? "none" : "block";
+      document.getElementById("contenidoTablero").style.display = visible ? "block" : "none";
+      document.getElementById("zonaCamaras").style.display = visible ? "flex" : "none";
+      if (!visible) { ajustarEscala(); return; }
+
+      const ajustesLocales = obtenerAjustesLocales();
+
+      // Solo reconstruye el grid si cambió el estilo (evita parpadeos innecesarios)
+      const estiloGrid = (ajustesLocales.grid && ajustesLocales.grid !== 'admin') ? ajustesLocales.grid : (tablero.estilo_grid || 'bingo');
+      if (estiloGrid !== ESTILO_GRID_ACTUAL) {
+        estiloGrid === 'simple' ? construirGrillaSimple() : construirGrilla();
+        ESTILO_GRID_ACTUAL = estiloGrid;
+      }
+
+      const marcados = tablero.numeros_marcados || [];
+      const colorMarcado = tablero.color_marcado || '#2ecc71';
+      const colorParpadeo = tablero.color_parpadeo || '#e67e22';
+      const ocultarNoLlamados = !!tablero.ocultar_no_llamados;
+
+      document.querySelectorAll(".num-celda").forEach(el => {
+        el.classList.remove("marcado", "ultimo");
+        el.style.background = "";
+        const num = el.id.replace("pub-num-", "");
+        el.innerText = ocultarNoLlamados && !marcados.includes(Number(num)) ? "" : num;
+      });
+
+      marcados.forEach(n => {
+        const el = document.getElementById("pub-num-" + n);
+        if (el) { el.classList.add("marcado"); el.style.background = colorMarcado; el.style.color = "#0f172a"; }
+      });
+
+      if (marcados.length > 0) {
+        const ultimoEl = document.getElementById("pub-num-" + marcados[marcados.length - 1]);
+        if (ultimoEl) { ultimoEl.classList.add("ultimo"); ultimoEl.style.background = colorParpadeo; ultimoEl.style.color = "white"; }
+      }
+
+      document.getElementById("numeroActual").style.background = colorParpadeo;
+      document.getElementById("numeroActual").innerText = marcados.length > 0 ? marcados[marcados.length - 1] : "--";
+
+      const ultimos = marcados.slice(-5).reverse();
+      document.getElementById("ultimos5").innerHTML = ultimos.map(n => `<div class="chip-ultimo">${n}</div>`).join("");
+
+      TAMANO_FUENTE_JUEGOS = tablero.tamano_fuente_juegos || 16;
+      const contJuegos = document.getElementById("listaJuegosPublico");
+      if (contJuegos) contJuegos.style.fontSize = TAMANO_FUENTE_JUEGOS + "px";
+
+      aplicarLayout(tablero.layout || 'horizontal', tablero.posicion_camara || 'derecha', tablero.plantilla || 'clasica', ajustesLocales);
+      montarCamaras(tablero.camaras || []);
+
+      ajustarEscala();
+    }
+
+    function aplicarLayout(layout, posicionCamara, plantilla, ajustesLocales) {
+      const cont = document.getElementById("contenedorPrincipal");
+      let clase;
+
+      if (ajustesLocales && ajustesLocales.layout && ajustesLocales.layout !== 'admin') {
+        clase = ajustesLocales.layout; // 'horizontal' | 'vertical-derecha' | 'vertical-izquierda'
+      } else {
+        clase = layout === 'vertical'
+          ? (posicionCamara === 'izquierda' ? 'vertical-izquierda' : 'vertical-derecha')
+          : 'horizontal';
+      }
+
+      cont.className = clase + (plantilla === 'show' ? ' plantilla-show' : '');
+    }
+
+    /* =========================================================================
+       AJUSTES LOCALES DEL ESPECTADOR (solo en este navegador, nunca en la BD)
+       ========================================================================= */
+    function claveAjustesLocales() { return 'tubingo_vista_' + MI_TENANT_ID; }
+
+    function obtenerAjustesLocales() {
+      try { return JSON.parse(localStorage.getItem(claveAjustesLocales())) || {}; } catch (e) { return {}; }
+    }
+
+    function toggleAjustesVista() {
+      const panel = document.getElementById("panelAjustesVista");
+      const abierto = panel.style.display === "block";
+      panel.style.display = abierto ? "none" : "block";
+      if (!abierto) {
+        const ajustes = obtenerAjustesLocales();
+        document.getElementById("selVistaLayout").value = ajustes.layout || "admin";
+        document.getElementById("selVistaGrid").value = ajustes.grid || "admin";
+      }
+    }
+
+    function guardarAjustesVistaLocal() {
+      const layout = document.getElementById("selVistaLayout").value;
+      const grid = document.getElementById("selVistaGrid").value;
+      localStorage.setItem(claveAjustesLocales(), JSON.stringify({ layout, grid }));
+      document.getElementById("panelAjustesVista").style.display = "none";
+      if (ULTIMO_TABLERO_RECIBIDO) pintarTablero(ULTIMO_TABLERO_RECIBIDO);
+    }
+
+    function restablecerAjustesVistaLocal() {
+      localStorage.removeItem(claveAjustesLocales());
+      document.getElementById("panelAjustesVista").style.display = "none";
+      if (ULTIMO_TABLERO_RECIBIDO) pintarTablero(ULTIMO_TABLERO_RECIBIDO);
+    }
+
+    let camarasYaMontadas = "";
+    // Convierte enlaces normales de YouTube/Facebook a su versión "embebible"
+    function convertirUrlEmbebible(url, silenciado) {
+      if (!url) return url;
+
+      const mute = silenciado === false ? "0" : "1";
+      const parametrosLimpios = `autoplay=1&mute=${mute}&fs=0&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&playsinline=1`;
+
+      let m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/live\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]+)/);
+      if (m) return `https://www.youtube-nocookie.com/embed/${m[1]}?${parametrosLimpios}`;
+      if (url.includes("youtube.com/embed/") || url.includes("youtube-nocookie.com/embed/")) return url;
+
+      let mCanal = url.match(/youtube\.com\/channel\/([a-zA-Z0-9_-]+)\/live/);
+      if (mCanal) return `https://www.youtube-nocookie.com/embed/live_stream?channel=${mCanal[1]}&${parametrosLimpios}`;
+
+      if (url.includes("facebook.com") && !url.includes("plugins/video.php")) {
+        return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&show_text=false&autoplay=true`;
+      }
+
+      // VDO.Ninja / OBS.Ninja: solo se silencia si el admin lo marcó explícitamente
+      if (url.includes("vdo.ninja") || url.includes("obs.ninja")) {
+        if (silenciado === true) {
+          let urlConParams = url;
+          urlConParams += (urlConParams.includes("?") ? "&" : "?") + "mute";
+          return urlConParams;
+        }
+        return url;
+      }
+
+      return url;
+    }
+
+    function activarCamaraLocal(boton, rotacion) {
+      const box = boton.closest(".cam-box");
+      box.innerHTML = "";
+      const video = document.createElement("video");
+      video.autoplay = true; video.muted = true; video.playsInline = true;
+      box.appendChild(video);
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } })
+        .then(stream => {
+          video.srcObject = stream;
+          aplicarRotacionCamara(box, video, rotacion || 0);
+        })
+        .catch(() => { box.innerHTML = '<span>Sin acceso a la cámara de este dispositivo.</span>'; });
+    }
+
+    // Gira la imagen de la cámara (útil cuando VDO.Ninja/OBS entrega el video
+    // rotado). Para 90°/270° intercambia ancho y alto para llenar bien el
+    // recuadro sin verse estirado, y se recalcula si el recuadro cambia de tamaño.
+    function aplicarRotacionCamara(box, elemento, grados) {
+      if (!grados || grados === 0) return;
+
+      const ajustar = () => {
+        const w = box.clientWidth, h = box.clientHeight;
+        if (grados === 180) {
+          elemento.style.transform = "rotate(180deg)";
+        } else {
+          elemento.style.position = "absolute";
+          elemento.style.top = "50%";
+          elemento.style.left = "50%";
+          elemento.style.width = h + "px";
+          elemento.style.height = w + "px";
+          elemento.style.marginLeft = (-h / 2) + "px";
+          elemento.style.marginTop = (-w / 2) + "px";
+          elemento.style.transform = `rotate(${grados}deg)`;
+        }
+      };
+      ajustar();
+      new ResizeObserver(ajustar).observe(box);
+    }
+
+    function montarCamaras(camaras) {
+      const firma = JSON.stringify(camaras);
+      if (firma === camarasYaMontadas) return;
+      camarasYaMontadas = firma;
+
+      const zona = document.getElementById("zonaCamaras");
+      zona.innerHTML = "";
+
+      const camarasVideo = camaras.slice(0, 3);
+      const camaraAudio = camaras[3];
+
+      camarasVideo.filter(c => c.activa && c.tipo).forEach((cam, i) => {
+        const box = document.createElement("div");
+        box.className = "cam-box";
+        box.id = "camBox" + i;
+        zona.appendChild(box);
+
+        if (cam.tipo === "dispositivo") {
+          box.innerHTML = `
+            <div style="text-align:center; padding:10px;">
+              <button onclick="activarCamaraLocal(this, ${cam.rotacion || 0})" style="background:#e67e22; color:white; border:none; padding:10px 14px; border-radius:6px; cursor:pointer; font-size:14px;">
+                🎥 Activar cámara de este dispositivo
+              </button>
+              <p style="font-size:12px; color:#999; margin-top:8px;">Solo toca esto si ESTE dispositivo es la pantalla que transmite en vivo. Los participantes no deben tocarlo.</p>
+            </div>`;
+        } else if (cam.tipo === "enlace" && cam.url) {
+          const iframe = document.createElement("iframe");
+          iframe.src = convertirUrlEmbebible(cam.url, cam.muted);
+          iframe.allow = "autoplay; camera; microphone; encrypted-media; fullscreen; picture-in-picture";
+          box.appendChild(iframe);
+          aplicarRotacionCamara(box, iframe, cam.rotacion || 0);
+        }
+      });
+
+      // Cámara 4: solo sonido — se muestra como control de volumen, no como video
+      montarAudioGlobal(camaraAudio);
+
+      ajustarEscala();
       setTimeout(ajustarEscala, 400);
       setTimeout(ajustarEscala, 1200);
     }
