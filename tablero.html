@@ -371,6 +371,49 @@
       return url;
     }
 
+    function mostrarGaleriaNube(box, cam, idCamara) {
+      const archivos = cam.archivos || [];
+      if (archivos.length === 0) {
+        box.innerHTML = '<span style="font-size:12px; color:#999; padding:10px;">El administrador todavía no subió imágenes a esta galería.</span>';
+        return;
+      }
+
+      const duracion = (cam.duracionSegundos || 5) * 1000;
+      const totalCiclo = duracion * archivos.length;
+
+      // Sincronizado por reloj: todos los que ven el enlace público ven la
+      // MISMA imagen al mismo tiempo, sin necesidad de coordinarse entre sí.
+      function actualizar() {
+        const posicionEnCiclo = Date.now() % totalCiclo;
+        const indice = Math.floor(posicionEnCiclo / duracion);
+        const item = archivos[indice];
+        const idActual = box.dataset.itemActual;
+
+        if (idActual !== String(indice)) {
+          box.dataset.itemActual = String(indice);
+          box.innerHTML = "";
+          if (item.esVideo) {
+            const video = document.createElement("video");
+            video.src = item.url;
+            video.autoplay = true;
+            video.muted = !!cam.muted;
+            video.playsInline = true;
+            video.style.cssText = "width:100%; height:100%; object-fit:cover;";
+            box.appendChild(video);
+          } else {
+            const img = document.createElement("img");
+            img.src = item.url;
+            img.style.cssText = "width:100%; height:100%; object-fit:cover;";
+            box.appendChild(img);
+          }
+        }
+      }
+
+      actualizar();
+      if (box._intervaloGaleria) clearInterval(box._intervaloGaleria);
+      box._intervaloGaleria = setInterval(actualizar, 1000);
+    }
+
     function activarCamaraLocal(boton, rotacion) {
       const box = boton.closest(".cam-box");
       box.innerHTML = "";
@@ -441,6 +484,8 @@
           iframe.allow = "autoplay; camera; microphone; encrypted-media; fullscreen; picture-in-picture";
           box.appendChild(iframe);
           aplicarRotacionCamara(box, iframe, cam.rotacion || 0);
+        } else if (cam.tipo === "galeria_nube") {
+          mostrarGaleriaNube(box, cam, i);
         }
       });
 
