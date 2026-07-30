@@ -207,17 +207,22 @@
             <div class="grid-config" style="margin-top:8px;">
               <div class="grupo">
                 <label>Tipo:</label>
-                <select id="camTipo${i}">
+                <select id="camTipo${i}" onchange="mostrarCamposSegunTipo(${i})">
                   <option value="">— Desactivada —</option>
                   ${esSlotAudio ? '' : '<option value="dispositivo">Cámara de este dispositivo (webcam)</option>'}
                   <option value="enlace">${esSlotAudio ? "Enlace de audio (VDO.Ninja, etc.)" : "Enlace (OBS.Ninja, VDO.Ninja, YouTube, Facebook, etc.)"}</option>
+                  ${esSlotAudio ? '' : '<option value="galeria_nube">☁️ Galería (subo fotos/videos, las ve todo el público)</option>'}
                 </select>
               </div>
-              <div class="grupo">
+              <div class="grupo" id="grupoUrl${i}">
                 <label>Enlace (si aplica):</label>
                 <input type="text" id="camUrl${i}" placeholder="https://..." onchange="guardarConfigTablero()">
               </div>
               ${esSlotAudio ? '' : `
+              <div class="grupo" id="grupoSegundos${i}" style="display:none;">
+                <label>Segundos por imagen (o por video):</label>
+                <input type="number" id="camSegundos${i}" min="1" max="120" value="5" onchange="guardarConfigTablero()">
+              </div>
               <div class="grupo">
                 <label>Rotación de la imagen:</label>
                 <select id="camRotacion${i}" onchange="guardarConfigTablero()">
@@ -228,14 +233,116 @@
                 </select>
               </div>`}
             </div>
+
+            ${esSlotAudio ? '' : `
+            <div id="grupoGaleria${i}" style="display:none; margin-top:10px; background:#f8f9fa; padding:12px; border-radius:6px;">
+              <label style="font-weight:bold; font-size:0.85rem;">Subir imágenes/videos (se ven en el enlace público):</label>
+              <div style="display:flex; gap:10px; margin-top:6px; flex-wrap:wrap;">
+                <input type="file" id="camArchivos${i}" multiple accept="image/*,video/*" style="flex:1; min-width:200px;">
+                <button type="button" class="btn-accion btn-modificar" style="width:auto;" onclick="subirArchivosGaleria(${i})">⬆️ Subir</button>
+              </div>
+              <div id="listaGaleria${i}" style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;"></div>
+            </div>`}
+
             <label style="display:flex; align-items:center; gap:8px; margin-top:10px; font-size:0.85rem; cursor:pointer;">
               <input type="checkbox" id="camMute${i}" style="width:auto;" onchange="guardarConfigTablero()">
-              🔇 Silenciar ${esSlotAudio ? "el sonido global" : "el audio de esta cámara"}
+              🔇 Silenciar ${esSlotAudio ? "el sonido global" : "el audio de esta cámara (o de los videos de la galería)"}
             </label>
             ${esSlotAudio ? '<p style="font-size:0.75rem; color:#7f8c8d; margin:6px 0 0;">💡 Usa esta cámara solo para transmitir sonido (ej. un micrófono en VDO.Ninja). Aparecerá como un control de volumen 🔊 junto al botón de ajustes en la pantalla pública, no como un video.</p>' :
-              `<p style="font-size:0.75rem; color:#e67e22; margin:6px 0 0;">⚠️ "Cámara de este dispositivo" solo funciona bien si es la MISMA pantalla/PC que se muestra a todo el público (ej. una TV en el local). Si tus participantes abren el enlace en su propio celular, verían SU PROPIA cámara — para que todos vean la misma transmisión en vivo, usa un enlace (OBS.Ninja / VDO.Ninja / YouTube / Facebook Live).</p>
+              `<p style="font-size:0.75rem; color:#e67e22; margin:6px 0 0;">⚠️ "Cámara de este dispositivo" solo funciona bien si es la MISMA pantalla/PC que se muestra a todo el público. Para que TODOS vean lo mismo (sea en su celular o PC), usa un enlace (OBS.Ninja/VDO.Ninja/YouTube/Facebook Live) o la opción de "☁️ Galería".</p>
             <p style="font-size:0.75rem; color:#7f8c8d; margin:4px 0 0;">💡 Para YouTube o Facebook, puedes pegar el enlace normal (el que copias del navegador o del botón "Compartir") — el sistema lo convierte automáticamente al formato correcto.</p>`}
           </div>`;
+      }
+      for (let i = 0; i < 4; i++) mostrarCamposSegunTipo(i);
+    }
+
+    function mostrarCamposSegunTipo(i) {
+      const tipo = document.getElementById("camTipo" + i).value;
+      const grupoUrl = document.getElementById("grupoUrl" + i);
+      const grupoSegundos = document.getElementById("grupoSegundos" + i);
+      const grupoGaleria = document.getElementById("grupoGaleria" + i);
+      const esGaleria = tipo === "galeria_nube";
+      if (grupoUrl) grupoUrl.style.display = esGaleria ? "none" : "";
+      if (grupoSegundos) grupoSegundos.style.display = esGaleria ? "" : "none";
+      if (grupoGaleria) grupoGaleria.style.display = esGaleria ? "block" : "none";
+      if (esGaleria) renderizarListaGaleria(i);
+    }
+
+    /* =========================================================================
+       GALERÍA EN LA NUBE — subir/borrar archivos, visibles para todo el público
+       ========================================================================= */
+    async function subirArchivosGaleria(i) {
+      const input = document.getElementById("camArchivos" + i);
+      const archivos = input.files;
+      if (!archivos || archivos.length === 0) { alert("Elige al menos un archivo."); return; }
+
+      document.getElementById("mainPanel").classList.add("loading");
+      try {
+        const camaras = TABLERO_ACTUAL.camaras || [];
+        const listaActual = (camaras[i] && camaras[i].archivos) || [];
+
+        for (const archivo of Array.from(archivos)) {
+          const ruta = `${window.MI_TENANT_ID}/${i}/${Date.now()}_${archivo.name}`;
+          const { error } = await _supabase.storage.from('tablero-media').upload(ruta, archivo);
+          if (error) { alert("❌ Error subiendo " + archivo.name + ": " + error.message); continue; }
+
+          const { data: urlData } = _supabase.storage.from('tablero-media').getPublicUrl(ruta);
+          listaActual.push({ url: urlData.publicUrl, esVideo: archivo.type.startsWith("video/"), ruta });
+        }
+
+        if (!camaras[i]) camaras[i] = {};
+        camaras[i].archivos = listaActual;
+        TABLERO_ACTUAL.camaras = camaras;
+
+        await guardarConfigTablero();
+        renderizarListaGaleria(i);
+        input.value = "";
+        alert("✅ Archivos subidos correctamente.");
+      } catch (err) {
+        alert("❌ Error: " + err.message);
+      } finally {
+        document.getElementById("mainPanel").classList.remove("loading");
+      }
+    }
+
+    function renderizarListaGaleria(i) {
+      const cont = document.getElementById("listaGaleria" + i);
+      if (!cont) return;
+
+      const camaras = TABLERO_ACTUAL.camaras || [];
+      const archivos = (camaras[i] && camaras[i].archivos) || [];
+
+      if (archivos.length === 0) {
+        cont.innerHTML = `<p style="font-size:0.8rem; color:#999;">Todavía no has subido nada.</p>`;
+        return;
+      }
+
+      cont.innerHTML = archivos.map((a, idx) => `
+        <div style="position:relative; width:80px;">
+          ${a.esVideo
+            ? `<video src="${a.url}" style="width:80px; height:80px; object-fit:cover; border-radius:6px; background:#000;"></video>`
+            : `<img src="${a.url}" style="width:80px; height:80px; object-fit:cover; border-radius:6px;">`}
+          <button onclick="eliminarArchivoGaleria(${i}, ${idx})" style="position:absolute; top:2px; right:2px; background:#e74c3c; color:white; border:none; border-radius:50%; width:20px; height:20px; cursor:pointer; font-size:11px; line-height:1;">✕</button>
+        </div>`).join("");
+    }
+
+    async function eliminarArchivoGaleria(i, idx) {
+      if (!confirm("¿Eliminar este archivo de la galería?")) return;
+
+      const camaras = TABLERO_ACTUAL.camaras || [];
+      const archivos = (camaras[i] && camaras[i].archivos) || [];
+      const archivo = archivos[idx];
+      if (!archivo) return;
+
+      try {
+        if (archivo.ruta) await _supabase.storage.from('tablero-media').remove([archivo.ruta]);
+        archivos.splice(idx, 1);
+        camaras[i].archivos = archivos;
+        TABLERO_ACTUAL.camaras = camaras;
+        await guardarConfigTablero();
+        renderizarListaGaleria(i);
+      } catch (err) {
+        alert("❌ Error: " + err.message);
       }
     }
 
@@ -278,6 +385,9 @@
         document.getElementById("camMute" + i).checked = !!cam.muted;
         const rotSel = document.getElementById("camRotacion" + i);
         if (rotSel) rotSel.value = cam.rotacion || "0";
+        const segInput = document.getElementById("camSegundos" + i);
+        if (segInput) segInput.value = cam.duracionSegundos || 5;
+        mostrarCamposSegunTipo(i);
       }
 
       actualizarEstadoPreview();
@@ -378,6 +488,7 @@
       const ocultar_no_llamados = document.getElementById("chkOcultarNoLlamados").checked;
       const tamano_fuente_juegos = parseInt(document.getElementById("tamanoFuenteJuegos").value, 10) || 16;
 
+      const camarasAnteriores = TABLERO_ACTUAL.camaras || [];
       const camaras = [];
       for (let i = 0; i < 4; i++) {
         const tipo = document.getElementById("camTipo" + i).value;
@@ -385,8 +496,11 @@
         const rotSel = document.getElementById("camRotacion" + i);
         const rotacion = rotSel ? (parseInt(rotSel.value, 10) || 0) : 0;
         const muted = document.getElementById("camMute" + i).checked;
+        const segInput = document.getElementById("camSegundos" + i);
+        const duracionSegundos = segInput ? (parseInt(segInput.value, 10) || 5) : 5;
         const esAudio = i === 3; // la 4ta cámara siempre es de solo sonido
-        camaras.push({ tipo, url, rotacion, muted, esAudio, activa: !!tipo });
+        const archivos = (camarasAnteriores[i] && camarasAnteriores[i].archivos) || [];
+        camaras.push({ tipo, url, rotacion, muted, duracionSegundos, esAudio, archivos, activa: !!tipo });
       }
 
       const { error } = await _supabase.from('tablero_bingo').update({ layout, posicion_camara, plantilla, estilo_grid, color_marcado, color_parpadeo, ocultar_no_llamados, tamano_fuente_juegos, camaras }).eq('tenant_id', window.MI_TENANT_ID);
