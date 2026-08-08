@@ -388,7 +388,7 @@
           ${a.es_video
             ? `<video src="${a.url}" style="width:80px; height:80px; object-fit:cover; border-radius:6px; background:#000;"></video>`
             : `<img src="${a.url}" style="width:80px; height:80px; object-fit:cover; border-radius:6px;">`}
-          <button onclick="eliminarArchivoGaleria(${i}, ${a.id}, '${a.ruta}')" style="position:absolute; top:2px; right:2px; background:#e74c3c; color:white; border:none; border-radius:50%; width:20px; height:20px; cursor:pointer; font-size:11px; line-height:1;">✕</button>
+          <button onclick="eliminarArchivoGaleria(${i}, '${a.id}', '${a.ruta}')" style="position:absolute; top:2px; right:2px; background:#e74c3c; color:white; border:none; border-radius:50%; width:20px; height:20px; cursor:pointer; font-size:11px; line-height:1;">✕</button>
         </div>`).join("");
     }
 
