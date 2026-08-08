@@ -48,6 +48,7 @@
         <button class="accion" style="margin:0; width:auto;" onclick="copiarLink()">Copiar</button>
         <button class="accion" style="margin:0; width:auto; background:#3498db;" onclick="window.open(document.getElementById('linkPublico').value, '_blank')">Abrir</button>
       </div>
+      <span id="estadoEnVivo" style="display:inline-block; margin-top:8px; font-size:0.85rem; font-weight:bold; color:#7f8c8d;">⚪ Sin nadie conectado al enlace público</span>
     </div>
 
     <div class="seccion" style="border-left:4px solid #e67e22;">
@@ -185,6 +186,24 @@
           cargarJuegos();
         })
         .subscribe();
+
+      // Contador "EN VIVO" — Supabase Realtime Presence (no persiste en BD)
+      const canalPresencia = _supabase.channel('presencia_' + window.MI_TENANT_ID, {
+        config: { presence: { key: 'admin_' + crypto.randomUUID() } }
+      });
+      canalPresencia
+        .on('presence', { event: 'sync' }, () => {
+          const estado = canalPresencia.presenceState();
+          const conectados = Object.keys(estado).filter(k => !k.startsWith('admin_')).length;
+          const badge = document.getElementById('estadoEnVivo');
+          if (badge) {
+            badge.innerHTML = conectados > 0
+              ? `🔴 EN VIVO — ${conectados} conectado${conectados === 1 ? '' : 's'}`
+              : `⚪ Sin nadie conectado al enlace público`;
+            badge.style.color = conectados > 0 ? '#e74c3c' : '#7f8c8d';
+          }
+        })
+        .subscribe();
     });
 
     function construirGridNumeros() {
@@ -270,34 +289,80 @@
 
     /* =========================================================================
        GALERÍA EN LA NUBE — subir/borrar archivos, visibles para todo el público
+       Guardado en tabla propia `tablero_galeria` (NO en el jsonb `camaras`)
        ========================================================================= */
+
+    // Quita acentos, espacios y caracteres raros del nombre de archivo
+    function limpiarNombreArchivo(nombre) {
+      return nombre
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9._-]/g, '_')
+        .replace(/_+/g, '_')
+        .toLowerCase();
+    }
+
+    // Comprime una imagen a JPEG hasta que pese 500KB o menos
+    function comprimirImagen(archivo, maxKB = 500) {
+      return new Promise((resolve) => {
+        if (!archivo.type.startsWith("image/")) { resolve(archivo); return; }
+        const img = new Image();
+        const urlTemporal = URL.createObjectURL(archivo);
+        img.onload = () => {
+          let ancho = img.width, alto = img.height;
+          const canvas = document.createElement("canvas");
+          const ctx = canvas.getContext("2d");
+          let calidad = 0.85, intentos = 0;
+          function intentar() {
+            canvas.width = ancho; canvas.height = alto;
+            ctx.drawImage(img, 0, 0, ancho, alto);
+            canvas.toBlob((blob) => {
+              if (!blob) { URL.revokeObjectURL(urlTemporal); resolve(archivo); return; }
+              if (blob.size <= maxKB * 1024 || intentos >= 8) {
+                URL.revokeObjectURL(urlTemporal);
+                const nombreBase = limpiarNombreArchivo(archivo.name.replace(/\.[^.]+$/, ""));
+                resolve(new File([blob], nombreBase + ".jpg", { type: "image/jpeg" }));
+              } else {
+                intentos++;
+                if (calidad > 0.4) calidad -= 0.1;
+                else { ancho = Math.round(ancho * 0.85); alto = Math.round(alto * 0.85); }
+                intentar();
+              }
+            }, "image/jpeg", calidad);
+          }
+          intentar();
+        };
+        img.onerror = () => { URL.revokeObjectURL(urlTemporal); resolve(archivo); };
+        img.src = urlTemporal;
+      });
+    }
+
     async function subirArchivosGaleria(i) {
       const input = document.getElementById("camArchivos" + i);
-      const archivos = input.files;
-      if (!archivos || archivos.length === 0) { alert("Elige al menos un archivo."); return; }
-
+      const archivosElegidos = input.files;
+      if (!archivosElegidos || archivosElegidos.length === 0) { alert("Elige al menos un archivo."); return; }
       document.getElementById("mainPanel").classList.add("loading");
       try {
-        const camaras = TABLERO_ACTUAL.camaras || [];
-        const listaActual = (camaras[i] && camaras[i].archivos) || [];
-
-        for (const archivo of Array.from(archivos)) {
-          const ruta = `${window.MI_TENANT_ID}/${i}/${Date.now()}_${archivo.name}`;
-          const { error } = await _supabase.storage.from('tablero-media').upload(ruta, archivo);
-          if (error) { alert("❌ Error subiendo " + archivo.name + ": " + error.message); continue; }
-
+        let subidos = 0;
+        for (const archivoOriginal of Array.from(archivosElegidos)) {
+          const esVideo = archivoOriginal.type.startsWith("video/");
+          const archivoFinal = esVideo ? archivoOriginal : await comprimirImagen(archivoOriginal, 500);
+          const nombreLimpio = esVideo
+            ? limpiarNombreArchivo(archivoOriginal.name.replace(/\.[^.]+$/, "")) + (archivoOriginal.name.match(/\.[^.]+$/) || [".mp4"])[0]
+            : archivoFinal.name;
+          const ruta = `${window.MI_TENANT_ID}/${i}/${Date.now()}_${nombreLimpio}`;
+          const { error: errorSubida } = await _supabase.storage.from('tablero-media').upload(ruta, archivoFinal);
+          if (errorSubida) { alert("❌ Error subiendo " + nombreLimpio + ": " + errorSubida.message); continue; }
           const { data: urlData } = _supabase.storage.from('tablero-media').getPublicUrl(ruta);
-          listaActual.push({ url: urlData.publicUrl, esVideo: archivo.type.startsWith("video/"), ruta });
+          const { error: errorInsert } = await _supabase.from('tablero_galeria').insert({
+            tenant_id: window.MI_TENANT_ID, camara_index: i, url: urlData.publicUrl,
+            ruta, es_video: esVideo, orden: Date.now()
+          });
+          if (errorInsert) { alert("❌ Error guardando " + nombreLimpio + ": " + errorInsert.message); continue; }
+          subidos++;
         }
-
-        if (!camaras[i]) camaras[i] = {};
-        camaras[i].archivos = listaActual;
-        TABLERO_ACTUAL.camaras = camaras;
-
-        await guardarConfigTablero();
-        renderizarListaGaleria(i);
+        await renderizarListaGaleria(i);
         input.value = "";
-        alert("✅ Archivos subidos correctamente.");
+        alert(`✅ ${subidos} archivo(s) subido(s) correctamente.`);
       } catch (err) {
         alert("❌ Error: " + err.message);
       } finally {
@@ -305,42 +370,35 @@
       }
     }
 
-    function renderizarListaGaleria(i) {
+    async function renderizarListaGaleria(i) {
       const cont = document.getElementById("listaGaleria" + i);
       if (!cont) return;
-
-      const camaras = TABLERO_ACTUAL.camaras || [];
-      const archivos = (camaras[i] && camaras[i].archivos) || [];
-
-      if (archivos.length === 0) {
+      cont.innerHTML = `<p style="font-size:0.8rem; color:#999;">Cargando...</p>`;
+      const { data: archivos, error } = await _supabase
+        .from('tablero_galeria').select('*')
+        .eq('tenant_id', window.MI_TENANT_ID).eq('camara_index', i)
+        .order('orden', { ascending: true });
+      if (error) { cont.innerHTML = `<p style="font-size:0.8rem; color:#e74c3c;">Error: ${error.message}</p>`; return; }
+      if (!archivos || archivos.length === 0) {
         cont.innerHTML = `<p style="font-size:0.8rem; color:#999;">Todavía no has subido nada.</p>`;
         return;
       }
-
-      cont.innerHTML = archivos.map((a, idx) => `
+      cont.innerHTML = `<p style="font-size:0.75rem; color:#7f8c8d; width:100%;">${archivos.length} archivo(s)</p>` + archivos.map((a) => `
         <div style="position:relative; width:80px;">
-          ${a.esVideo
+          ${a.es_video
             ? `<video src="${a.url}" style="width:80px; height:80px; object-fit:cover; border-radius:6px; background:#000;"></video>`
             : `<img src="${a.url}" style="width:80px; height:80px; object-fit:cover; border-radius:6px;">`}
-          <button onclick="eliminarArchivoGaleria(${i}, ${idx})" style="position:absolute; top:2px; right:2px; background:#e74c3c; color:white; border:none; border-radius:50%; width:20px; height:20px; cursor:pointer; font-size:11px; line-height:1;">✕</button>
+          <button onclick="eliminarArchivoGaleria(${i}, ${a.id}, '${a.ruta}')" style="position:absolute; top:2px; right:2px; background:#e74c3c; color:white; border:none; border-radius:50%; width:20px; height:20px; cursor:pointer; font-size:11px; line-height:1;">✕</button>
         </div>`).join("");
     }
 
-    async function eliminarArchivoGaleria(i, idx) {
+    async function eliminarArchivoGaleria(i, id, ruta) {
       if (!confirm("¿Eliminar este archivo de la galería?")) return;
-
-      const camaras = TABLERO_ACTUAL.camaras || [];
-      const archivos = (camaras[i] && camaras[i].archivos) || [];
-      const archivo = archivos[idx];
-      if (!archivo) return;
-
       try {
-        if (archivo.ruta) await _supabase.storage.from('tablero-media').remove([archivo.ruta]);
-        archivos.splice(idx, 1);
-        camaras[i].archivos = archivos;
-        TABLERO_ACTUAL.camaras = camaras;
-        await guardarConfigTablero();
-        renderizarListaGaleria(i);
+        if (ruta) await _supabase.storage.from('tablero-media').remove([ruta]);
+        const { error } = await _supabase.from('tablero_galeria').delete().eq('id', id);
+        if (error) throw error;
+        await renderizarListaGaleria(i);
       } catch (err) {
         alert("❌ Error: " + err.message);
       }
@@ -488,7 +546,6 @@
       const ocultar_no_llamados = document.getElementById("chkOcultarNoLlamados").checked;
       const tamano_fuente_juegos = parseInt(document.getElementById("tamanoFuenteJuegos").value, 10) || 16;
 
-      const camarasAnteriores = TABLERO_ACTUAL.camaras || [];
       const camaras = [];
       for (let i = 0; i < 4; i++) {
         const tipo = document.getElementById("camTipo" + i).value;
@@ -499,8 +556,7 @@
         const segInput = document.getElementById("camSegundos" + i);
         const duracionSegundos = segInput ? (parseInt(segInput.value, 10) || 5) : 5;
         const esAudio = i === 3; // la 4ta cámara siempre es de solo sonido
-        const archivos = (camarasAnteriores[i] && camarasAnteriores[i].archivos) || [];
-        camaras.push({ tipo, url, rotacion, muted, duracionSegundos, esAudio, archivos, activa: !!tipo });
+        camaras.push({ tipo, url, rotacion, muted, duracionSegundos, esAudio, activa: !!tipo });
       }
 
       const { error } = await _supabase.from('tablero_bingo').update({ layout, posicion_camara, plantilla, estilo_grid, color_marcado, color_parpadeo, ocultar_no_llamados, tamano_fuente_juegos, camaras }).eq('tenant_id', window.MI_TENANT_ID);
