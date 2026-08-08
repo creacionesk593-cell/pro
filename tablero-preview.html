@@ -419,9 +419,15 @@
       return url;
     }
 
-    function mostrarGaleriaNube(box, cam, idCamara) {
-      const archivos = cam.archivos || [];
-      if (archivos.length === 0) {
+    async function mostrarGaleriaNube(box, cam, idCamara) {
+      box.innerHTML = '<span style="font-size:12px; color:#999; padding:10px;">Cargando galería...</span>';
+
+      const { data: archivos, error } = await _supabase
+        .from('tablero_galeria').select('*')
+        .eq('tenant_id', MI_TENANT_ID).eq('camara_index', idCamara)
+        .order('orden', { ascending: true });
+
+      if (error || !archivos || archivos.length === 0) {
         box.innerHTML = '<span style="font-size:12px; color:#999; padding:10px;">El administrador todavía no subió imágenes a esta galería.</span>';
         return;
       }
@@ -440,7 +446,7 @@
         if (idActual !== String(indice)) {
           box.dataset.itemActual = String(indice);
           box.innerHTML = "";
-          if (item.esVideo) {
+          if (item.es_video) {
             const video = document.createElement("video");
             video.src = item.url;
             video.autoplay = true;
