@@ -84,6 +84,8 @@
     </div>
   </div>
 
+  <div id="badgeEnVivo" style="display:none; position:fixed; top:10px; left:10px; background:rgba(30,41,59,0.85); color:white; padding:5px 10px; border-radius:20px; font-size:0.75rem; font-weight:bold; z-index:9998; box-shadow:0 2px 8px rgba(0,0,0,0.4);">🔴 EN VIVO — 1</div>
+
   <button id="btnAjustesVista" onclick="toggleAjustesVista()" title="Ajustar cómo se ve en tu pantalla" style="position:fixed; bottom:14px; right:14px; width:46px; height:46px; border-radius:50%; background:#2c3e50; color:white; border:none; font-size:1.3rem; cursor:pointer; z-index:9998; box-shadow:0 2px 8px rgba(0,0,0,0.4);">⚙️</button>
 
   <button id="btnAltavoz" onclick="toggleControlVolumen()" style="display:none; position:fixed; bottom:14px; right:68px; width:46px; height:46px; border-radius:50%; background:#2c3e50; color:white; border:none; font-size:1.3rem; cursor:pointer; z-index:9998; box-shadow:0 2px 8px rgba(0,0,0,0.4);">🔊</button>
@@ -163,6 +165,24 @@
 
       window.addEventListener('resize', ajustarEscala);
       window.addEventListener('orientationchange', () => setTimeout(ajustarEscala, 200));
+
+      // Contador "EN VIVO" — se une a Presence y muestra cuántos hay conectados
+      const canalPresencia = _supabase.channel('presencia_' + MI_TENANT_ID, {
+        config: { presence: { key: crypto.randomUUID() } }
+      });
+      canalPresencia
+        .on('presence', { event: 'sync' }, () => {
+          const estado = canalPresencia.presenceState();
+          const conectados = Object.keys(estado).filter(k => !k.startsWith('admin_')).length;
+          const badge = document.getElementById('badgeEnVivo');
+          if (badge) {
+            badge.style.display = conectados > 0 ? 'block' : 'none';
+            badge.innerHTML = `🔴 EN VIVO — ${conectados}`;
+          }
+        })
+        .subscribe(async (status) => {
+          if (status === 'SUBSCRIBED') await canalPresencia.track({ conectado_en: new Date().toISOString() });
+        });
     });
 
     function mostrarMensajeEspera(texto) {
@@ -371,9 +391,15 @@
       return url;
     }
 
-    function mostrarGaleriaNube(box, cam, idCamara) {
-      const archivos = cam.archivos || [];
-      if (archivos.length === 0) {
+    async function mostrarGaleriaNube(box, cam, idCamara) {
+      box.innerHTML = '<span style="font-size:12px; color:#999; padding:10px;">Cargando galería...</span>';
+
+      const { data: archivos, error } = await _supabase
+        .from('tablero_galeria').select('*')
+        .eq('tenant_id', MI_TENANT_ID).eq('camara_index', idCamara)
+        .order('orden', { ascending: true });
+
+      if (error || !archivos || archivos.length === 0) {
         box.innerHTML = '<span style="font-size:12px; color:#999; padding:10px;">El administrador todavía no subió imágenes a esta galería.</span>';
         return;
       }
@@ -392,7 +418,7 @@
         if (idActual !== String(indice)) {
           box.dataset.itemActual = String(indice);
           box.innerHTML = "";
-          if (item.esVideo) {
+          if (item.es_video) {
             const video = document.createElement("video");
             video.src = item.url;
             video.autoplay = true;
