@@ -83,15 +83,17 @@
         Mostrar el tablero a los participantes (si está apagado, ven "Esperando inicio del juego")
       </label>
       <p style="font-size:0.85rem; color:#7f8c8d;">Toca un número para marcarlo — se muestra al instante en la pantalla pública. Tócalo de nuevo para deshacer un error.</p>
-      <div style="display:flex; gap:8px; align-items:center; margin:10px 0;">
-        <input type="number" id="inputNumeroManual" min="1" max="75" placeholder="Escribe el número (1-75) y presiona Enter"
-          style="flex:1; padding:9px; border-radius:6px; border:1px solid #ccc; font-size:1rem;"
-          onkeydown="if(event.key==='Enter'){ event.preventDefault(); marcarNumeroManual(); }">
-        <button type="button" class="accion" style="margin:0; width:auto; background:#27ae60;" onclick="marcarNumeroManual()">✔️ Marcar</button>
+      <div id="seccionMarcarNumeros">
+        <div style="display:flex; gap:8px; align-items:center; margin:10px 0;">
+          <input type="number" id="inputNumeroManual" min="1" max="75" placeholder="Escribe el número (1-75) y presiona Enter"
+            style="flex:1; padding:9px; border-radius:6px; border:1px solid #ccc; font-size:1rem;"
+            onkeydown="if(event.key==='Enter'){ event.preventDefault(); marcarNumeroManual(); }">
+          <button type="button" id="btnMarcarManual" class="accion" style="margin:0; width:auto; background:#27ae60;" onclick="marcarNumeroManual()">✔️ Marcar</button>
+        </div>
+        <button id="btnReiniciarPartida" class="accion" style="background:#e74c3c;" onclick="reiniciarPartida()">🔄 Reiniciar Partida (vaciar todos los números)</button>
+        <div class="grid-numeros" id="gridNumeros"></div>
       </div>
-      <button class="accion" style="background:#e74c3c;" onclick="reiniciarPartida()">🔄 Reiniciar Partida (vaciar todos los números)</button>
       <button class="accion" style="background:#2980b9;" onclick="descargarHistorialNumeros()">📄 Descargar números (orden en que salieron)</button>
-      <div class="grid-numeros" id="gridNumeros"></div>
     </div>
 
     <div class="seccion">
@@ -155,10 +157,10 @@
       </label>
     </div>
 
-    <div class="seccion">
+    <div class="seccion" id="seccionCamaras">
       <h3>📷 Cámaras / Transmisión (hasta 3)</h3>
       <div id="contenedorCamaras"></div>
-      <button class="accion" onclick="guardarConfigTablero()">💾 Guardar Cámaras</button>
+      <button id="btnGuardarCamaras" class="accion" onclick="guardarConfigTablero()">💾 Guardar Cámaras</button>
     </div>
   </main>
 
@@ -181,6 +183,21 @@
       construirSlotsCamaras();
       await cargarTablero();
       await cargarJuegos();
+
+      if (acceso.habilitado === false) {
+        // Deja ver el enlace público y el historial, pero bloquea cualquier
+        // acción que modifique el tablero (marcar números, reiniciar,
+        // cámaras, subir/borrar galería).
+        bloquearPorSuscripcionVencida(["btnMarcarManual", "btnReiniciarPartida", "btnGuardarCamaras", "inputNumeroManual", "chkVisiblePublico"]);
+        ["seccionMarcarNumeros", "seccionCamaras"].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) {
+            el.style.pointerEvents = "none";
+            el.style.opacity = "0.5";
+            el.style.userSelect = "none";
+          }
+        });
+      }
 
       _supabase.channel('tablero_admin_' + window.MI_TENANT_ID)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'tablero_bingo', filter: `tenant_id=eq.${window.MI_TENANT_ID}` }, (payload) => {
