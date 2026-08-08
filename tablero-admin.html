@@ -83,7 +83,14 @@
         Mostrar el tablero a los participantes (si está apagado, ven "Esperando inicio del juego")
       </label>
       <p style="font-size:0.85rem; color:#7f8c8d;">Toca un número para marcarlo — se muestra al instante en la pantalla pública. Tócalo de nuevo para deshacer un error.</p>
+      <div style="display:flex; gap:8px; align-items:center; margin:10px 0;">
+        <input type="number" id="inputNumeroManual" min="1" max="75" placeholder="Escribe el número (1-75) y presiona Enter"
+          style="flex:1; padding:9px; border-radius:6px; border:1px solid #ccc; font-size:1rem;"
+          onkeydown="if(event.key==='Enter'){ event.preventDefault(); marcarNumeroManual(); }">
+        <button type="button" class="accion" style="margin:0; width:auto; background:#27ae60;" onclick="marcarNumeroManual()">✔️ Marcar</button>
+      </div>
       <button class="accion" style="background:#e74c3c;" onclick="reiniciarPartida()">🔄 Reiniciar Partida (vaciar todos los números)</button>
+      <button class="accion" style="background:#2980b9;" onclick="descargarHistorialNumeros()">📄 Descargar números (orden en que salieron)</button>
       <div class="grid-numeros" id="gridNumeros"></div>
     </div>
 
@@ -527,6 +534,36 @@
       pintarEstado();
 
       try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: yaEstaba ? "Desmarcar número del tablero" : "Marcar número del tablero", p_detalle: `Número: ${n}` }); } catch(e) {}
+    }
+
+    async function marcarNumeroManual() {
+      const input = document.getElementById("inputNumeroManual");
+      const n = parseInt(input.value, 10);
+      if (!n || n < 1 || n > 75) { alert("Escribe un número válido entre 1 y 75."); return; }
+      await alternarNumero(n);
+      input.value = "";
+      input.focus();
+    }
+
+    function descargarHistorialNumeros() {
+      const numeros = TABLERO_ACTUAL.numeros_marcados || [];
+      if (numeros.length === 0) { alert("Todavía no se ha marcado ningún número."); return; }
+
+      let texto = "";
+      for (let i = 0; i < numeros.length; i += 15) {
+        texto += numeros.slice(i, i + 15).join("\t") + "\n";
+      }
+
+      const blob = new Blob([texto], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const enlace = document.createElement("a");
+      const fecha = new Date().toISOString().slice(0, 10);
+      enlace.href = url;
+      enlace.download = `numeros_salidos_${fecha}.txt`;
+      document.body.appendChild(enlace);
+      enlace.click();
+      document.body.removeChild(enlace);
+      URL.revokeObjectURL(url);
     }
 
     async function guardarVisibilidad() {
