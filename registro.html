@@ -278,6 +278,17 @@
       window.MI_TENANT_ID = acceso.perfil.tenant_id;
       window.MI_USER_ID = acceso.session.user.id;
 
+      // ← NUEVO: categoría del juego (1, 2 o 3), fija en el link.
+      // Ej: registro.html?tenant=el_profe&categoria=2
+      const parametrosURL = new URLSearchParams(window.location.search);
+      let categoriaLeida = parseInt(parametrosURL.get("categoria"), 10);
+      if (![1, 2, 3].includes(categoriaLeida)) categoriaLeida = 1;
+      window.MI_CATEGORIA = categoriaLeida;
+      window.MI_TIPO = 'venta';
+
+      const tituloEl = document.getElementById("tituloHeader");
+      if (tituloEl) tituloEl.innerText += " — Juego " + window.MI_CATEGORIA;
+
       cargarTotalVendido();
       restaurarCodigoCanalGuardado();
 
@@ -566,26 +577,32 @@
         }
         // =========================================================================
 
-        const { data: existentes, error: errConteo } = await _supabase
-          .from('registros_bingo')
-          .select('id')
-          .eq('tenant_id', window.MI_TENANT_ID)
-          .eq('telefono', celular);
+        // ← CAMBIO: el límite ahora se cuenta SOLO dentro de este mismo
+        // juego (tipo='venta', esta categoría) — no se mezcla con los
+        // otros 2 juegos de venta ni con el solidario.
+        const { data: totalExistente, error: errConteo } = await _supabase
+          .rpc('contar_registros_por_telefono', {
+            p_tenant_id: window.MI_TENANT_ID, p_tipo: window.MI_TIPO,
+            p_categoria: window.MI_CATEGORIA, p_telefono: celular
+          });
 
         if (errConteo) throw errConteo;
 
-        if (existentes.length + listaQR.length > CONFIG_SISTEMA.limite_cartones) {
+        if ((totalExistente || 0) + listaQR.length > CONFIG_SISTEMA.limite_cartones) {
           alert(`¡Cupo Excedido! Límite actual de máximo ${CONFIG_SISTEMA.limite_cartones}.`);
           mainEl.classList.remove("loading");
           btn.innerText = "Registrar Cartones en el Sistema";
           return;
         }
 
+        // ← CAMBIO: el mismo número de cartón SÍ puede existir en otro
+        // juego (Venta 2, Venta 3, Solidario...) — solo revisamos
+        // duplicados DENTRO de este mismo juego.
         const { data: yaRegistrados, error: errValidacion } = await _supabase
-          .from('registros_bingo')
-          .select('carton')
-          .eq('tenant_id', window.MI_TENANT_ID)
-          .in('carton', listaQR);
+          .rpc('cartones_ya_registrados', {
+            p_tenant_id: window.MI_TENANT_ID, p_tipo: window.MI_TIPO,
+            p_categoria: window.MI_CATEGORIA, p_series: listaQR
+          });
 
         if (errValidacion) throw errValidacion;
 
@@ -602,6 +619,7 @@
         let dniCliente = document.getElementById("dni").value.trim();
         let filasAInsertar = listaQR.map(serie => ({
           tenant_id: window.MI_TENANT_ID,
+          tipo: window.MI_TIPO, categoria: window.MI_CATEGORIA,
           carton: serie, nombre: nombre, dni: dniCliente, correo: correo, telefono: celular,
           ciudad: ubicacionCompleta, vendedor: vendedor, vendedor_id: window.MI_USER_ID, ip_publica: ipPublica,
           gps_latitud: geoLatitud ? geoLatitud.toString() : "", gps_longitud: geoLongitud ? geoLongitud.toString() : ""
@@ -649,10 +667,12 @@
           .from('registros_bingo')
           .select('id', { count: 'exact', head: true })
           .eq('tenant_id', window.MI_TENANT_ID)
-          .eq('vendedor_id', window.MI_USER_ID);
+          .eq('vendedor_id', window.MI_USER_ID)
+          .eq('tipo', window.MI_TIPO)
+          .eq('categoria', window.MI_CATEGORIA);
 
         if (error) throw error;
-        document.getElementById("totalVendidosUsuario").innerText = `🎟️ Cartones vendidos: ${count || 0}`;
+        document.getElementById("totalVendidosUsuario").innerText = `🎟️ Cartones vendidos (Juego ${window.MI_CATEGORIA}): ${count || 0}`;
       } catch (err) {
         console.error("Error cargando total vendido:", err.message);
       }
