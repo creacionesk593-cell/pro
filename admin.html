@@ -103,10 +103,30 @@
       <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
         <a href="registro.html" class="btn-regresar">⬅️ Ir al Formulario de Registro</a>
         <a href="tablero-admin.html" class="btn-regresar" style="background:#8e44ad;">🎙️ Control del Tablero en Vivo</a>
-        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <select id="selectorListaDescarga" style="padding:9px 10px; border-radius:6px; border:1px solid #ccc; font-weight:bold; font-size:0.9rem;">
+            <option value="venta:1">🎟️ Venta — Juego 1</option>
+            <option value="venta:2">🎟️ Venta — Juego 2</option>
+            <option value="venta:3">🎟️ Venta — Juego 3</option>
+            <option value="solidario:1">🤝 Solidario — Juego 1</option>
+            <option value="solidario:2">🤝 Solidario — Juego 2</option>
+            <option value="solidario:3">🤝 Solidario — Juego 3</option>
+          </select>
           <button id="btnExportarExcel" class="btn-descarga" onclick="descargarBaseDatosExcel()">🟢 Descargar Excel (Formato Oficial)</button>
           <button id="btnInformePDF" class="btn-descarga" style="background:#c0392b;" onclick="generarInformePDF()">📄 Descargar Informe PDF</button>
         </div>
+      </div>
+
+      <div class="tarjeta" style="margin-bottom:20px; padding:20px;">
+        <h3 style="margin-top:0;">🔑 Códigos de WhatsApp por Juego</h3>
+        <p style="font-size:0.85rem; color:#7f8c8d; margin-top:-8px;">
+          Cada código queda ligado a un juego (Venta o Solidario, 1/2/3). La persona que se registra
+          solo escribe su código — el sistema detecta solo a cuál juego pertenece, sin necesitar links distintos.
+          Puedes poner un límite de cartones propio para ese código (déjalo vacío para usar el límite general).
+        </p>
+        <div id="listaCodigosCanal" style="display:flex; flex-direction:column; gap:8px; margin-bottom:12px;"></div>
+        <button type="button" onclick="agregarFilaCodigoCanal()" style="width:auto; padding:8px 14px; background:#2980b9; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">➕ Agregar código</button>
+        <button type="button" id="btnGuardarCodigosCanal" onclick="guardarCodigosCanal()" style="width:auto; padding:8px 14px; background:#27ae60; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold; margin-left:8px;">💾 Guardar Todos los Cambios</button>
       </div>
 
       <div class="tarjetas-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
@@ -155,15 +175,6 @@
           <div style="text-align: right; display: flex; align-items: center; justify-content: flex-end;">
             <button id="btnGuardarDiseno" class="btn-azul" style="background:#8e44ad; width:100%;" onclick="guardarDisenoPersonalizado()">💾 Guardar Imagen y Colores</button>
           </div>
-        </div>
-      </div>
-
-      <div class="seccion" style="border-left: 5px solid #2ecc71;">
-        <h3 style="color: #27ae60; margin-bottom: 5px;">🔑 Código Activo del Canal de WhatsApp</h3>
-        <p style="font-size:0.85rem; color:#7f8c8d; margin: 0 0 10px 0;">El código que guardes aquí será el que exija obligatoriamente el formulario de los clientes para permitirles registrarse.</p>
-        <div class="config-flex">
-          <input type="text" id="inputCodigoAdmin" placeholder="Cargando código actual...">
-          <button id="btnGuardarCodigoCanal" class="btn-azul" onclick="actualizarCodigoCanal()">Actualizar Código</button>
         </div>
       </div>
 
@@ -349,11 +360,11 @@
       mostrarEstadoDelTenant(acceso);
 
       if (!acceso.habilitado) {
-        bloquearPorSuscripcionVencida(["btnActualizarParametros", "btnGuardarDiseno", "btnGuardarCodigoCanal"]);
+        bloquearPorSuscripcionVencida(["btnActualizarParametros", "btnGuardarDiseno", "btnGuardarCodigosCanal"]);
       }
 
       cargarMetricasDelSistema();
-      cargarCodigoCanalActual();
+      cargarCodigosCanal();
       cargarDisenoEnPanel();
       cargarConfiguracionGlobalTable();
       cargarUsuarios();
@@ -667,8 +678,17 @@
 
     async function descargarBaseDatosExcel() {
       try {
-        const { data } = await _supabase.from('registros_bingo').select('carton, nombre, ciudad, correo, telefono, vendedor, vendedor_id').order('id', { ascending: true });
-        if (!data || data.length === 0) return alert("No hay datos.");
+        const seleccion = document.getElementById("selectorListaDescarga").value; // ej: "venta:1"
+        const [tipoSeleccionado, categoriaSeleccionada] = seleccion.split(":");
+
+        const { data } = await _supabase
+          .from('registros_bingo')
+          .select('carton, nombre, ciudad, correo, telefono, vendedor, vendedor_id')
+          .eq('tipo', tipoSeleccionado)
+          .eq('categoria', parseInt(categoriaSeleccionada, 10))
+          .order('id', { ascending: true });
+
+        if (!data || data.length === 0) return alert("No hay cartones registrados todavía en esa lista (" + seleccion.replace(":", " — Juego ") + ").");
 
         // Averiguamos qué vendedores están suspendidos, para invalidar sus cartones (UNO_PARTICIPA = 0)
         const idsVendedores = [...new Set(data.map(r => r.vendedor_id).filter(Boolean))];
@@ -699,7 +719,7 @@
           let cA = hojaTrabajo[XLSX.utils.encode_cell({r: R, c: 0})]; if(cA) cA.t = 's';
           let cF = hojaTrabajo[XLSX.utils.encode_cell({r: R, c: 5})]; if(cF) cF.t = 's';
         }
-        XLSX.writeFile(libroTrabajo, `registros_tubingo_pro.xlsx`);
+        XLSX.writeFile(libroTrabajo, `registros_tubingo_pro_${tipoSeleccionado}_juego${categoriaSeleccionada}.xlsx`);
       } catch (err) { alert(err.message); }
     }
 
@@ -722,9 +742,18 @@
 
     async function generarInformePDF() {
       try {
-        const { data, error } = await _supabase.from('registros_bingo').select('vendedor, nombre, telefono').order('id', { ascending: true });
+        const seleccion = document.getElementById("selectorListaDescarga").value; // ej: "venta:1"
+        const [tipoSeleccionado, categoriaSeleccionada] = seleccion.split(":");
+        const etiquetaLista = (tipoSeleccionado === 'solidario' ? 'Solidario' : 'Venta') + ' — Juego ' + categoriaSeleccionada;
+
+        const { data, error } = await _supabase
+          .from('registros_bingo')
+          .select('vendedor, nombre, telefono')
+          .eq('tipo', tipoSeleccionado)
+          .eq('categoria', parseInt(categoriaSeleccionada, 10))
+          .order('id', { ascending: true });
         if (error) throw error;
-        if (!data || data.length === 0) return alert("No hay datos para generar el informe.");
+        if (!data || data.length === 0) return alert("No hay datos para generar el informe de esa lista (" + etiquetaLista + ").");
 
         const totalCartones = data.length;
 
@@ -761,17 +790,20 @@
 
         doc.setFontSize(16);
         doc.text(`Informe de Ventas - ${window.MI_TENANT_NOMBRE || "TuBingo Pro"}`, 14, 18);
+        doc.setFontSize(11);
+        doc.setTextColor(120);
+        doc.text(etiquetaLista, 14, 24);
         doc.setFontSize(12);
         doc.setTextColor(90);
-        doc.text(`Generado: ${new Date().toLocaleString('es-EC')}`, 14, 27);
+        doc.text(`Generado: ${new Date().toLocaleString('es-EC')}`, 14, 31);
         doc.setTextColor(0);
         doc.setFontSize(12);
-        doc.text(`Total de cartones registrados: ${totalCartones}`, 14, 37);
+        doc.text(`Total de cartones registrados: ${totalCartones}`, 14, 41);
 
         doc.setFontSize(11);
-        doc.text("Ranking de Vendedores (Top 20)", 14, 47);
+        doc.text("Ranking de Vendedores (Top 20)", 14, 51);
         doc.autoTable({
-          startY: 51,
+          startY: 55,
           head: [["#", "Vendedor", "Cartones Registrados"]],
           body: rankingVendedores.map((v, i) => [i + 1, v[0], v[1]]),
           theme: 'grid',
@@ -808,17 +840,108 @@
       }
     }
 
-    async function cargarCodigoCanalActual() {
-      const { data } = await _supabase.from('configuracion_sistema').select('valor').eq('tenant_id', window.MI_TENANT_ID).eq('clave', 'codigo_canal_whatsapp').maybeSingle();
-      if (data) document.getElementById("inputCodigoAdmin").value = data.valor;
+    /* =========================================================================
+       CÓDIGOS DE WHATSAPP POR JUEGO — reemplaza al código único de antes.
+       Cada fila = un código ligado a un juego (tipo + categoría), con un
+       límite de cartones opcional propio para ese código.
+       ========================================================================= */
+    let codigosCanalCache = [];
+
+    async function cargarCodigosCanal() {
+      const { data, error } = await _supabase
+        .from('codigos_canal')
+        .select('*')
+        .eq('tenant_id', window.MI_TENANT_ID)
+        .order('creado_el', { ascending: true });
+
+      if (error) { console.error("Error cargando códigos de canal:", error.message); return; }
+
+      codigosCanalCache = data || [];
+      renderizarFilasCodigosCanal();
     }
 
-    async function actualizarCodigoCanal() {
-      let nuevoCodigo = document.getElementById("inputCodigoAdmin").value.trim().toUpperCase();
-      if (!nuevoCodigo) return;
-      await _supabase.from('configuracion_sistema').upsert({ tenant_id: window.MI_TENANT_ID, clave: 'codigo_canal_whatsapp', valor: nuevoCodigo }, { onConflict: 'tenant_id,clave' });
-      await registrarLog("Actualizar código de canal", "Se cambió el código secreto de WhatsApp");
-      alert(`¡Éxito! El código se actualizó a "${nuevoCodigo}".`);
+    function renderizarFilasCodigosCanal() {
+      const cont = document.getElementById("listaCodigosCanal");
+      if (codigosCanalCache.length === 0) {
+        cont.innerHTML = '<p style="font-size:0.85rem; color:#999;">Todavía no has creado ningún código. Usa "➕ Agregar código" para crear el primero.</p>';
+        return;
+      }
+
+      cont.innerHTML = codigosCanalCache.map((c, i) => `
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:8px; background:#f8f9fa; border-radius:6px;">
+          <input type="text" value="${c.codigo || ''}" placeholder="Ej: BINGO_ELENA" style="flex:1; min-width:140px; padding:7px; text-transform:uppercase; font-weight:bold; border:1px solid #ccc; border-radius:5px;"
+            oninput="codigosCanalCache[${i}].codigo = this.value.trim().toUpperCase()">
+          <select style="padding:7px; border:1px solid #ccc; border-radius:5px;" onchange="codigosCanalCache[${i}].tipo = this.value">
+            <option value="venta" ${c.tipo === 'venta' ? 'selected' : ''}>🎟️ Venta</option>
+            <option value="solidario" ${c.tipo === 'solidario' ? 'selected' : ''}>🤝 Solidario</option>
+          </select>
+          <select style="padding:7px; border:1px solid #ccc; border-radius:5px;" onchange="codigosCanalCache[${i}].categoria = parseInt(this.value, 10)">
+            <option value="1" ${c.categoria === 1 ? 'selected' : ''}>Juego 1</option>
+            <option value="2" ${c.categoria === 2 ? 'selected' : ''}>Juego 2</option>
+            <option value="3" ${c.categoria === 3 ? 'selected' : ''}>Juego 3</option>
+          </select>
+          <input type="number" min="1" value="${c.limite_cartones ?? ''}" placeholder="Límite (opcional)" style="width:130px; padding:7px; border:1px solid #ccc; border-radius:5px;"
+            oninput="codigosCanalCache[${i}].limite_cartones = this.value === '' ? null : parseInt(this.value, 10)">
+          <label style="display:flex; align-items:center; gap:4px; font-size:0.85rem; white-space:nowrap;">
+            <input type="checkbox" ${c.activo !== false ? 'checked' : ''} style="width:auto;" onchange="codigosCanalCache[${i}].activo = this.checked"> Activo
+          </label>
+          <button type="button" onclick="eliminarFilaCodigoCanal(${i})" style="width:auto; background:#e74c3c; color:white; border:none; border-radius:5px; padding:7px 10px; cursor:pointer;">✕</button>
+        </div>
+      `).join("");
+    }
+
+    function agregarFilaCodigoCanal() {
+      codigosCanalCache.push({ id: null, codigo: "", tipo: "venta", categoria: 1, limite_cartones: null, activo: true });
+      renderizarFilasCodigosCanal();
+    }
+
+    async function eliminarFilaCodigoCanal(indice) {
+      const fila = codigosCanalCache[indice];
+      if (fila.id) {
+        if (!confirm(`¿Eliminar el código "${fila.codigo}"? Nadie podrá volver a usarlo para registrarse.`)) return;
+        const { error } = await _supabase.from('codigos_canal').delete().eq('id', fila.id);
+        if (error) { alert("Error eliminando: " + error.message); return; }
+        await registrarLog("Eliminar código de canal", `Se eliminó el código "${fila.codigo}"`);
+      }
+      codigosCanalCache.splice(indice, 1);
+      renderizarFilasCodigosCanal();
+    }
+
+    async function guardarCodigosCanal() {
+      // Validaciones simples antes de guardar
+      const codigosVistos = new Set();
+      for (const c of codigosCanalCache) {
+        if (!c.codigo || c.codigo.trim() === "") {
+          alert("Hay un código vacío — escríbelo o elimina esa fila antes de guardar.");
+          return;
+        }
+        if (codigosVistos.has(c.codigo)) {
+          alert(`El código "${c.codigo}" está repetido — cada código debe ser único.`);
+          return;
+        }
+        codigosVistos.add(c.codigo);
+      }
+
+      try {
+        const filasAGuardar = codigosCanalCache.map(c => ({
+          id: c.id || undefined,
+          tenant_id: window.MI_TENANT_ID,
+          codigo: c.codigo,
+          tipo: c.tipo,
+          categoria: c.categoria,
+          limite_cartones: c.limite_cartones,
+          activo: c.activo !== false
+        }));
+
+        const { error } = await _supabase.from('codigos_canal').upsert(filasAGuardar, { onConflict: 'tenant_id,codigo' });
+        if (error) throw error;
+
+        await registrarLog("Guardar códigos de canal", `Se guardaron ${filasAGuardar.length} código(s) de WhatsApp`);
+        alert("✅ Códigos guardados correctamente.");
+        cargarCodigosCanal(); // recarga para traer los "id" recién asignados a los códigos nuevos
+      } catch (err) {
+        alert("Error guardando los códigos: " + err.message);
+      }
     }
 
     /* =========================================================================
