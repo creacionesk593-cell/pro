@@ -923,20 +923,36 @@
       }
 
       try {
-        const filasAGuardar = codigosCanalCache.map(c => ({
-          id: c.id || undefined,
-          tenant_id: window.MI_TENANT_ID,
-          codigo: c.codigo,
-          tipo: c.tipo,
-          categoria: c.categoria,
-          limite_cartones: c.limite_cartones,
-          activo: c.activo !== false
-        }));
+        // ← CORREGIDO: separar en 2 llamadas para no mezclar filas con "id"
+        // y filas sin "id" en el mismo lote (Supabase manda null explícito
+        // si a una fila del lote "le falta" una columna que otra sí tiene).
 
-        const { error } = await _supabase.from('codigos_canal').upsert(filasAGuardar, { onConflict: 'tenant_id,codigo' });
-        if (error) throw error;
+        const filasNuevas = codigosCanalCache
+          .filter(c => !c.id)
+          .map(c => ({
+            tenant_id: window.MI_TENANT_ID,
+            codigo: c.codigo, tipo: c.tipo, categoria: c.categoria,
+            limite_cartones: c.limite_cartones, activo: c.activo !== false
+          }));
 
-        await registrarLog("Guardar códigos de canal", `Se guardaron ${filasAGuardar.length} código(s) de WhatsApp`);
+        const filasExistentes = codigosCanalCache
+          .filter(c => c.id)
+          .map(c => ({
+            id: c.id, tenant_id: window.MI_TENANT_ID,
+            codigo: c.codigo, tipo: c.tipo, categoria: c.categoria,
+            limite_cartones: c.limite_cartones, activo: c.activo !== false
+          }));
+
+        if (filasNuevas.length > 0) {
+          const { error: errInsert } = await _supabase.from('codigos_canal').insert(filasNuevas);
+          if (errInsert) throw errInsert;
+        }
+        if (filasExistentes.length > 0) {
+          const { error: errUpdate } = await _supabase.from('codigos_canal').upsert(filasExistentes, { onConflict: 'id' });
+          if (errUpdate) throw errUpdate;
+        }
+
+        await registrarLog("Guardar códigos de canal", `Se guardaron ${codigosCanalCache.length} código(s) de WhatsApp`);
         alert("✅ Códigos guardados correctamente.");
         cargarCodigosCanal(); // recarga para traer los "id" recién asignados a los códigos nuevos
       } catch (err) {
