@@ -860,6 +860,16 @@
       renderizarFilasCodigosCanal();
     }
 
+    // Convierte un timestamptz (texto ISO que llega de Supabase) al formato
+    // que necesita un <input type="datetime-local"> — igual que ya haces
+    // con el campo "Fecha y Hora de Cierre (Ecuador)" general.
+    function formatearFechaParaInputLocal(fechaISO) {
+      if (!fechaISO) return "";
+      const d = new Date(fechaISO);
+      const pad = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
     function renderizarFilasCodigosCanal() {
       const cont = document.getElementById("listaCodigosCanal");
       if (codigosCanalCache.length === 0) {
@@ -882,6 +892,11 @@
           </select>
           <input type="number" min="1" value="${c.limite_cartones ?? ''}" placeholder="Límite (opcional)" style="width:130px; padding:7px; border:1px solid #ccc; border-radius:5px;"
             oninput="codigosCanalCache[${i}].limite_cartones = this.value === '' ? null : parseInt(this.value, 10)">
+          <div style="display:flex; flex-direction:column; gap:2px;">
+            <input type="datetime-local" value="${formatearFechaParaInputLocal(c.fecha_cierre)}" style="padding:6px; border:1px solid #ccc; border-radius:5px; font-size:0.85rem;"
+              onchange="codigosCanalCache[${i}].fecha_cierre = this.value === '' ? null : new Date(this.value).toISOString()">
+            <span style="font-size:0.7rem; color:#999;">Cierre propio (opcional)</span>
+          </div>
           <label style="display:flex; align-items:center; gap:4px; font-size:0.85rem; white-space:nowrap;">
             <input type="checkbox" ${c.activo !== false ? 'checked' : ''} style="width:auto;" onchange="codigosCanalCache[${i}].activo = this.checked"> Activo
           </label>
@@ -891,7 +906,7 @@
     }
 
     function agregarFilaCodigoCanal() {
-      codigosCanalCache.push({ id: null, codigo: "", tipo: "venta", categoria: 1, limite_cartones: null, activo: true });
+      codigosCanalCache.push({ id: null, codigo: "", tipo: "venta", categoria: 1, limite_cartones: null, fecha_cierre: null, activo: true });
       renderizarFilasCodigosCanal();
     }
 
@@ -932,7 +947,7 @@
           .map(c => ({
             tenant_id: window.MI_TENANT_ID,
             codigo: c.codigo, tipo: c.tipo, categoria: c.categoria,
-            limite_cartones: c.limite_cartones, activo: c.activo !== false
+            limite_cartones: c.limite_cartones, fecha_cierre: c.fecha_cierre, activo: c.activo !== false
           }));
 
         const filasExistentes = codigosCanalCache
@@ -940,7 +955,7 @@
           .map(c => ({
             id: c.id, tenant_id: window.MI_TENANT_ID,
             codigo: c.codigo, tipo: c.tipo, categoria: c.categoria,
-            limite_cartones: c.limite_cartones, activo: c.activo !== false
+            limite_cartones: c.limite_cartones, fecha_cierre: c.fecha_cierre, activo: c.activo !== false
           }));
 
         if (filasNuevas.length > 0) {
