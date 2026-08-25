@@ -743,6 +743,10 @@
         if (data.limite_cartones !== null && data.limite_cartones !== undefined) {
           CONFIG_SISTEMA.limite_cartones = data.limite_cartones;
         }
+        // ← NUEVO: la función ya resolvió cuál fecha aplica (la del código,
+        // o si no tenía, la general del tenant) — la aplicamos tal cual.
+        CONFIG_SISTEMA.fecha_cierre = data.fecha_cierre ? new Date(data.fecha_cierre) : null;
+        iniciarMonitoreoTiempo();
 
         estadoEl.innerText = `✅ Juego ${data.categoria} — ${data.cartones_registrados} cartón(es) registrados hasta ahora en este juego`;
         estadoEl.style.color = "#27ae60";
