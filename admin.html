@@ -118,11 +118,12 @@
       </div>
 
       <div class="tarjeta" style="margin-bottom:20px; padding:20px;">
-        <h3 style="margin-top:0;">🔑 Códigos de WhatsApp por Juego</h3>
+        <h3 style="margin-top:0;">🔑 Juegos y Códigos de WhatsApp (hasta 7 de Venta + 7 Solidarios)</h3>
         <p style="font-size:0.85rem; color:#7f8c8d; margin-top:-8px;">
-          Cada código queda ligado a un juego (Venta o Solidario, 1/2/3). La persona que se registra
-          solo escribe su código — el sistema detecta solo a cuál juego pertenece, sin necesitar links distintos.
-          Puedes poner un límite de cartones propio para ese código (déjalo vacío para usar el límite general).
+          Cada fila es un juego independiente y completo: su propio código, su propio límite de cartones,
+          sus propios caracteres de QR, su propia fecha de cierre, y si permite registro manual — igual que
+          antes tenías un solo juego con estos 4 parámetros, ahora cada código tiene los suyos, sin mezclarse
+          entre juegos. La persona solo escribe su código y el sistema detecta a cuál juego pertenece.
         </p>
         <div id="listaCodigosCanal" style="display:flex; flex-direction:column; gap:8px; margin-bottom:12px;"></div>
         <button type="button" onclick="agregarFilaCodigoCanal()" style="width:auto; padding:8px 14px; background:#2980b9; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">➕ Agregar código</button>
@@ -248,8 +249,8 @@
         </table>
       </div>
 
-      <div class="seccion" style="border-left: 5px solid #f1c40f;">
-        <h3 style="color: #d35400;">⚙️ Parámetros y Restricciones Globales del Bingo</h3>
+      <div class="seccion" style="border-left: 5px solid #f1c40f; display:none;">
+        <h3 style="color: #d35400;">⚙️ Parámetros y Restricciones Globales del Bingo (en desuso — ahora cada juego tiene los suyos, arriba en "Juegos y Códigos de WhatsApp")</h3>
         <p style="font-size:0.85rem; color:#7f8c8d; margin-top:-5px;">Controla los límites y la fecha límite de cierre para el registro general de cartones de juego.</p>
         
         <div class="grid-parametros">
@@ -861,8 +862,7 @@
     }
 
     // Convierte un timestamptz (texto ISO que llega de Supabase) al formato
-    // que necesita un <input type="datetime-local"> — igual que ya haces
-    // con el campo "Fecha y Hora de Cierre (Ecuador)" general.
+    // que necesita un <input type="datetime-local">.
     function formatearFechaParaInputLocal(fechaISO) {
       if (!fechaISO) return "";
       const d = new Date(fechaISO);
@@ -877,36 +877,55 @@
         return;
       }
 
+      const opcionesCategoria = [1, 2, 3, 4, 5, 6, 7].map(n => `<option value="${n}">Juego ${n}</option>`).join("");
+
       cont.innerHTML = codigosCanalCache.map((c, i) => `
-        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:8px; background:#f8f9fa; border-radius:6px;">
-          <input type="text" value="${c.codigo || ''}" placeholder="Ej: BINGO_ELENA" style="flex:1; min-width:140px; padding:7px; text-transform:uppercase; font-weight:bold; border:1px solid #ccc; border-radius:5px;"
-            oninput="codigosCanalCache[${i}].codigo = this.value.trim().toUpperCase()">
-          <select style="padding:7px; border:1px solid #ccc; border-radius:5px;" onchange="codigosCanalCache[${i}].tipo = this.value">
-            <option value="venta" ${c.tipo === 'venta' ? 'selected' : ''}>🎟️ Venta</option>
-            <option value="solidario" ${c.tipo === 'solidario' ? 'selected' : ''}>🤝 Solidario</option>
-          </select>
-          <select style="padding:7px; border:1px solid #ccc; border-radius:5px;" onchange="codigosCanalCache[${i}].categoria = parseInt(this.value, 10)">
-            <option value="1" ${c.categoria === 1 ? 'selected' : ''}>Juego 1</option>
-            <option value="2" ${c.categoria === 2 ? 'selected' : ''}>Juego 2</option>
-            <option value="3" ${c.categoria === 3 ? 'selected' : ''}>Juego 3</option>
-          </select>
-          <input type="number" min="1" value="${c.limite_cartones ?? ''}" placeholder="Límite (opcional)" style="width:130px; padding:7px; border:1px solid #ccc; border-radius:5px;"
-            oninput="codigosCanalCache[${i}].limite_cartones = this.value === '' ? null : parseInt(this.value, 10)">
+        <div class="fila-codigo-canal" data-indice="${i}" style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; padding:12px; background:#f8f9fa; border-radius:6px; border:1px solid #e5e5e5;">
           <div style="display:flex; flex-direction:column; gap:2px;">
-            <input type="datetime-local" value="${formatearFechaParaInputLocal(c.fecha_cierre)}" style="padding:6px; border:1px solid #ccc; border-radius:5px; font-size:0.85rem;"
-              onchange="codigosCanalCache[${i}].fecha_cierre = this.value === '' ? null : new Date(this.value).toISOString()">
-            <span style="font-size:0.7rem; color:#999;">Cierre propio (opcional)</span>
+            <span style="font-size:0.7rem; color:#999;">Código</span>
+            <input type="text" class="fc-codigo" value="${c.codigo || ''}" placeholder="Ej: BINGO_ELENA" style="min-width:140px; padding:7px; text-transform:uppercase; font-weight:bold; border:1px solid #ccc; border-radius:5px;">
           </div>
-          <label style="display:flex; align-items:center; gap:4px; font-size:0.85rem; white-space:nowrap;">
-            <input type="checkbox" ${c.activo !== false ? 'checked' : ''} style="width:auto;" onchange="codigosCanalCache[${i}].activo = this.checked"> Activo
+          <div style="display:flex; flex-direction:column; gap:2px;">
+            <span style="font-size:0.7rem; color:#999;">Tipo</span>
+            <select class="fc-tipo" style="padding:7px; border:1px solid #ccc; border-radius:5px;">
+              <option value="venta" ${c.tipo === 'venta' ? 'selected' : ''}>🎟️ Venta</option>
+              <option value="solidario" ${c.tipo === 'solidario' ? 'selected' : ''}>🤝 Solidario</option>
+            </select>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:2px;">
+            <span style="font-size:0.7rem; color:#999;">Categoría</span>
+            <select class="fc-categoria" style="padding:7px; border:1px solid #ccc; border-radius:5px;">
+              ${[1,2,3,4,5,6,7].map(n => `<option value="${n}" ${c.categoria === n ? 'selected' : ''}>Juego ${n}</option>`).join("")}
+            </select>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:2px;">
+            <span style="font-size:0.7rem; color:#999;">Límite de Cartones</span>
+            <input type="number" min="1" class="fc-limite" value="${c.limite_cartones ?? ''}" placeholder="Ej: 5" style="width:100px; padding:7px; border:1px solid #ccc; border-radius:5px;">
+          </div>
+          <div style="display:flex; flex-direction:column; gap:2px;">
+            <span style="font-size:0.7rem; color:#999;">Caracteres QR</span>
+            <input type="number" min="1" class="fc-caracteres-qr" value="${c.caracteres_qr ?? 6}" style="width:90px; padding:7px; border:1px solid #ccc; border-radius:5px;">
+          </div>
+          <div style="display:flex; flex-direction:column; gap:2px;">
+            <span style="font-size:0.7rem; color:#999;">Fecha y Hora de Cierre</span>
+            <input type="datetime-local" class="fc-fecha-cierre" value="${formatearFechaParaInputLocal(c.fecha_cierre)}" style="padding:6px; border:1px solid #ccc; border-radius:5px; font-size:0.85rem;">
+          </div>
+          <label style="display:flex; align-items:center; gap:4px; font-size:0.85rem; white-space:nowrap; padding-bottom:8px;">
+            <input type="checkbox" class="fc-permitir-manual" ${c.permitir_manual ? 'checked' : ''} style="width:auto;"> Manual (sin QR)
           </label>
-          <button type="button" onclick="eliminarFilaCodigoCanal(${i})" style="width:auto; background:#e74c3c; color:white; border:none; border-radius:5px; padding:7px 10px; cursor:pointer;">✕</button>
+          <label style="display:flex; align-items:center; gap:4px; font-size:0.85rem; white-space:nowrap; padding-bottom:8px;">
+            <input type="checkbox" class="fc-activo" ${c.activo !== false ? 'checked' : ''} style="width:auto;"> Activo
+          </label>
+          <button type="button" onclick="eliminarFilaCodigoCanal(${i})" style="width:auto; background:#e74c3c; color:white; border:none; border-radius:5px; padding:8px 12px; cursor:pointer; align-self:flex-end;">✕</button>
         </div>
       `).join("");
     }
 
     function agregarFilaCodigoCanal() {
-      codigosCanalCache.push({ id: null, codigo: "", tipo: "venta", categoria: 1, limite_cartones: null, fecha_cierre: null, activo: true });
+      codigosCanalCache.push({
+        id: null, codigo: "", tipo: "venta", categoria: 1,
+        limite_cartones: 5, caracteres_qr: 6, fecha_cierre: null, permitir_manual: false, activo: true
+      });
       renderizarFilasCodigosCanal();
     }
 
@@ -922,7 +941,38 @@
       renderizarFilasCodigosCanal();
     }
 
+    // ← CLAVE DEL ARREGLO: en vez de confiar en que cada "onchange" se
+    // disparó a tiempo, aquí releemos el valor REAL que está ahora mismo
+    // en cada campo del formulario, directo del HTML, justo antes de
+    // guardar. Así es imposible que un campo (como la fecha) se guarde
+    // vacío por una casualidad de eventos.
+    function sincronizarCacheDesdeFormulario() {
+      document.querySelectorAll('.fila-codigo-canal').forEach(fila => {
+        const i = parseInt(fila.dataset.indice, 10);
+        const fuente = codigosCanalCache[i];
+        if (!fuente) return;
+
+        fuente.codigo = fila.querySelector('.fc-codigo').value.trim().toUpperCase();
+        fuente.tipo = fila.querySelector('.fc-tipo').value;
+        fuente.categoria = parseInt(fila.querySelector('.fc-categoria').value, 10);
+
+        const valorLimite = fila.querySelector('.fc-limite').value;
+        fuente.limite_cartones = valorLimite === '' ? null : parseInt(valorLimite, 10);
+
+        const valorCaracteres = fila.querySelector('.fc-caracteres-qr').value;
+        fuente.caracteres_qr = valorCaracteres === '' ? 6 : parseInt(valorCaracteres, 10);
+
+        const valorFecha = fila.querySelector('.fc-fecha-cierre').value;
+        fuente.fecha_cierre = valorFecha === '' ? null : new Date(valorFecha).toISOString();
+
+        fuente.permitir_manual = fila.querySelector('.fc-permitir-manual').checked;
+        fuente.activo = fila.querySelector('.fc-activo').checked;
+      });
+    }
+
     async function guardarCodigosCanal() {
+      sincronizarCacheDesdeFormulario();
+
       // Validaciones simples antes de guardar
       const codigosVistos = new Set();
       for (const c of codigosCanalCache) {
@@ -938,16 +988,17 @@
       }
 
       try {
-        // ← CORREGIDO: separar en 2 llamadas para no mezclar filas con "id"
-        // y filas sin "id" en el mismo lote (Supabase manda null explícito
-        // si a una fila del lote "le falta" una columna que otra sí tiene).
+        // Separado en 2 llamadas para no mezclar filas con "id" y filas
+        // sin "id" en el mismo lote (Supabase manda null explícito si a
+        // una fila del lote "le falta" una columna que otra sí tiene).
 
         const filasNuevas = codigosCanalCache
           .filter(c => !c.id)
           .map(c => ({
             tenant_id: window.MI_TENANT_ID,
             codigo: c.codigo, tipo: c.tipo, categoria: c.categoria,
-            limite_cartones: c.limite_cartones, fecha_cierre: c.fecha_cierre, activo: c.activo !== false
+            limite_cartones: c.limite_cartones, caracteres_qr: c.caracteres_qr,
+            fecha_cierre: c.fecha_cierre, permitir_manual: c.permitir_manual, activo: c.activo !== false
           }));
 
         const filasExistentes = codigosCanalCache
@@ -955,7 +1006,8 @@
           .map(c => ({
             id: c.id, tenant_id: window.MI_TENANT_ID,
             codigo: c.codigo, tipo: c.tipo, categoria: c.categoria,
-            limite_cartones: c.limite_cartones, fecha_cierre: c.fecha_cierre, activo: c.activo !== false
+            limite_cartones: c.limite_cartones, caracteres_qr: c.caracteres_qr,
+            fecha_cierre: c.fecha_cierre, permitir_manual: c.permitir_manual, activo: c.activo !== false
           }));
 
         if (filasNuevas.length > 0) {
