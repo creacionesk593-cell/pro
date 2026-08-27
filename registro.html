@@ -293,26 +293,8 @@
         bloquearPorSuscripcionVencida(["btnRegistrar"]);
       }
 
-      // Escucha cambios en tiempo real de la configuración (límite, fecha, modo manual)
-      // sin que el vendedor tenga que recargar la página.
-      _supabase.channel('config_tenant_' + window.MI_TENANT_ID)
-        .on('postgres_changes', {
-          event: '*', schema: 'public', table: 'configuracion', filter: `tenant_id=eq.${window.MI_TENANT_ID}`
-        }, (payload) => {
-          const nuevo = payload.new;
-          if (!nuevo) return;
-
-          // El límite del tenant es el "por defecto" — si el código tiene su
-          // propio límite, ese manda (se vuelve a aplicar en cada verificación).
-          CONFIG_SISTEMA.limite_cartones = nuevo.limite_cartones;
-          CONFIG_SISTEMA.caracteres_qr = nuevo.caracteres_qr;
-          CONFIG_SISTEMA.fecha_cierre = new Date(nuevo.fecha_cierre);
-          iniciarMonitoreoTiempo();
-
-          window._modoManualPermitido = !!nuevo.permitir_manual;
-          if (window.MI_CATEGORIA !== null) aplicarModoIngreso(); // ya hay código válido: refleja el cambio ya mismo
-        })
-        .subscribe();
+      // ← QUITADO: ya no se escucha ni se carga "configuracion" general —
+      // cada código trae sus propios límite/fecha/caracteres_qr/manual.
 
       fetch('https://api.ipify.org?format=json').then(res => res.json()).then(d => ipPublica = d.ip).catch(e => {});
       if (navigator.geolocation) {
@@ -321,17 +303,6 @@
 
       setTimeout(async () => {
         try {
-          const { data: configGeneral } = await _supabase.from('configuracion').select('*').eq('tenant_id', window.MI_TENANT_ID).single();
-          if (configGeneral) {
-            CONFIG_SISTEMA.limite_cartones = configGeneral.limite_cartones;
-            CONFIG_SISTEMA.caracteres_qr = configGeneral.caracteres_qr;
-            CONFIG_SISTEMA.fecha_cierre = new Date(configGeneral.fecha_cierre);
-            iniciarMonitoreoTiempo();
-
-            window._modoManualPermitido = !!configGeneral.permitir_manual;
-            if (window.MI_CATEGORIA !== null) aplicarModoIngreso();
-          }
-
           // MEJORA OWASP: Ahora solo descargamos los valores que la política RLS permite explícitamente (diseño)
           const { data: diseno } = await _supabase.from('configuracion_sistema').select('clave, valor').eq('tenant_id', window.MI_TENANT_ID);
           if (diseno) {
@@ -568,9 +539,7 @@
         }
 
         window.MI_CATEGORIA = verificacion.categoria;
-        if (verificacion.limite_cartones !== null && verificacion.limite_cartones !== undefined) {
-          CONFIG_SISTEMA.limite_cartones = verificacion.limite_cartones;
-        }
+        CONFIG_SISTEMA.limite_cartones = verificacion.limite_cartones;
         // =========================================================================
 
         // ← CAMBIO: el límite ahora se cuenta SOLO dentro de este mismo
@@ -740,12 +709,10 @@
         }
 
         window.MI_CATEGORIA = data.categoria;
-        if (data.limite_cartones !== null && data.limite_cartones !== undefined) {
-          CONFIG_SISTEMA.limite_cartones = data.limite_cartones;
-        }
-        // ← NUEVO: la función ya resolvió cuál fecha aplica (la del código,
-        // o si no tenía, la general del tenant) — la aplicamos tal cual.
+        CONFIG_SISTEMA.limite_cartones = data.limite_cartones;
+        CONFIG_SISTEMA.caracteres_qr = data.caracteres_qr || 6;
         CONFIG_SISTEMA.fecha_cierre = data.fecha_cierre ? new Date(data.fecha_cierre) : null;
+        window._modoManualPermitido = !!data.permitir_manual;
         iniciarMonitoreoTiempo();
 
         estadoEl.innerText = `✅ Juego ${data.categoria} — ${data.cartones_registrados} cartón(es) registrados hasta ahora en este juego`;
