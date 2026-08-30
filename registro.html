@@ -670,6 +670,7 @@
     }
 
     let verificandoCodigo = false;
+    let intervaloRevisionCodigo = null;
 
     // Se dispara al salir del campo del código (o al presionar Enter).
     // Consulta a qué juego pertenece ese código y desbloquea el resto del
@@ -683,6 +684,7 @@
         estadoEl.innerText = "";
         resto.style.display = "none";
         window.MI_CATEGORIA = null;
+        if (intervaloRevisionCodigo) clearInterval(intervaloRevisionCodigo);
         return;
       }
       if (verificandoCodigo) return;
@@ -705,6 +707,7 @@
           estadoEl.style.color = "#e74c3c";
           resto.style.display = "none";
           window.MI_CATEGORIA = null;
+          if (intervaloRevisionCodigo) clearInterval(intervaloRevisionCodigo);
           return;
         }
 
@@ -722,6 +725,11 @@
         aplicarModoIngreso();
         cargarTotalVendido();
 
+        // ← NUEVO: revisa cada 15s si el admin cambió algo (modo manual,
+        // límite, fecha) — sin exponer la tabla de códigos al público,
+        // solo reutiliza esta misma función segura.
+        iniciarRevisionPeriodicaCodigo(codigo);
+
       } catch (err) {
         estadoEl.innerText = "❌ Error verificando el código: " + err.message;
         estadoEl.style.color = "#e74c3c";
@@ -730,6 +738,38 @@
       } finally {
         verificandoCodigo = false;
       }
+    }
+
+    function iniciarRevisionPeriodicaCodigo(codigo) {
+      if (intervaloRevisionCodigo) clearInterval(intervaloRevisionCodigo);
+
+      intervaloRevisionCodigo = setInterval(async () => {
+        try {
+          const { data, error } = await _supabase
+            .rpc('verificar_codigo_canal_v2', {
+              p_tenant_id: window.MI_TENANT_ID, p_codigo: codigo, p_tipo_esperado: window.MI_TIPO
+            })
+            .maybeSingle();
+
+          if (error || !data || !data.valido) return; // si hay un problema momentáneo, no interrumpe al usuario
+
+          CONFIG_SISTEMA.limite_cartones = data.limite_cartones;
+          CONFIG_SISTEMA.caracteres_qr = data.caracteres_qr || 6;
+          CONFIG_SISTEMA.fecha_cierre = data.fecha_cierre ? new Date(data.fecha_cierre) : null;
+          iniciarMonitoreoTiempo();
+
+          const modoManualNuevo = !!data.permitir_manual;
+          if (modoManualNuevo !== window._modoManualPermitido) {
+            window._modoManualPermitido = modoManualNuevo;
+            aplicarModoIngreso(); // el admin cambió "Manual (sin QR)" — se refleja solo, sin recargar
+          }
+
+          const estadoEl = document.getElementById("estadoCodigoCanal");
+          if (estadoEl) {
+            estadoEl.innerText = `✅ Juego ${data.categoria} — ${data.cartones_registrados} cartón(es) registrados hasta ahora en este juego`;
+          }
+        } catch (e) { /* silencioso: se reintenta en el próximo ciclo */ }
+      }, 15000);
     }
 
     /* =========================================================================
