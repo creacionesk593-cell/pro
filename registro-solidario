@@ -612,6 +612,7 @@
     }
 
     let verificandoCodigo = false;
+    let intervaloRevisionCodigo = null;
 
     async function verificarCodigoEnVivo() {
       const estadoEl = document.getElementById("estadoCodigoCanal");
@@ -622,6 +623,7 @@
         estadoEl.innerText = "";
         resto.style.display = "none";
         window.MI_CATEGORIA = null;
+        if (intervaloRevisionCodigo) clearInterval(intervaloRevisionCodigo);
         return;
       }
       if (verificandoCodigo) return;
@@ -644,6 +646,7 @@
           estadoEl.style.color = "#e74c3c";
           resto.style.display = "none";
           window.MI_CATEGORIA = null;
+          if (intervaloRevisionCodigo) clearInterval(intervaloRevisionCodigo);
           return;
         }
 
@@ -663,6 +666,10 @@
         resto.style.display = "block";
         aplicarModoIngreso();
 
+        // ← NUEVO: revisa cada 15s si el admin cambió algo, sin exponer
+        // la tabla de códigos al público (reutiliza esta misma función segura).
+        iniciarRevisionPeriodicaCodigo(codigo);
+
       } catch (err) {
         estadoEl.innerText = "❌ Error verificando el código: " + err.message;
         estadoEl.style.color = "#e74c3c";
@@ -671,6 +678,38 @@
       } finally {
         verificandoCodigo = false;
       }
+    }
+
+    function iniciarRevisionPeriodicaCodigo(codigo) {
+      if (intervaloRevisionCodigo) clearInterval(intervaloRevisionCodigo);
+
+      intervaloRevisionCodigo = setInterval(async () => {
+        try {
+          const { data, error } = await _supabase
+            .rpc('verificar_codigo_canal_v2', {
+              p_tenant_id: window.MI_TENANT_ID, p_codigo: codigo, p_tipo_esperado: window.MI_TIPO
+            })
+            .maybeSingle();
+
+          if (error || !data || !data.valido) return;
+
+          CONFIG_SISTEMA.limite_cartones = data.limite_cartones;
+          CONFIG_SISTEMA.caracteres_qr = data.caracteres_qr || 6;
+          CONFIG_SISTEMA.fecha_cierre = data.fecha_cierre ? new Date(data.fecha_cierre) : null;
+          iniciarMonitoreoTiempo();
+
+          const modoManualNuevo = !!data.permitir_manual;
+          if (modoManualNuevo !== window._modoManualPermitido) {
+            window._modoManualPermitido = modoManualNuevo;
+            aplicarModoIngreso();
+          }
+
+          const estadoEl = document.getElementById("estadoCodigoCanal");
+          if (estadoEl) {
+            estadoEl.innerText = `✅ Categoría ${data.categoria} — ${data.cartones_registrados} cartón(es) registrados hasta ahora`;
+          }
+        } catch (e) { /* silencioso */ }
+      }, 15000);
     }
 
     /* NOTA: en la versión con login (registro.html) aquí va el autocompletado
