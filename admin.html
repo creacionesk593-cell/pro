@@ -105,15 +105,48 @@
         <a href="tablero-admin.html" class="btn-regresar" style="background:#8e44ad;">🎙️ Control del Tablero en Vivo</a>
         <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
           <select id="selectorListaDescarga" style="padding:9px 10px; border-radius:6px; border:1px solid #ccc; font-weight:bold; font-size:0.9rem;">
-            <option value="venta:1">🎟️ Venta — Juego 1</option>
-            <option value="venta:2">🎟️ Venta — Juego 2</option>
-            <option value="venta:3">🎟️ Venta — Juego 3</option>
-            <option value="solidario:1">🤝 Solidario — Juego 1</option>
-            <option value="solidario:2">🤝 Solidario — Juego 2</option>
-            <option value="solidario:3">🤝 Solidario — Juego 3</option>
+            <optgroup label="🎟️ Venta">
+              <option value="venta:1">Venta — Juego 1</option>
+              <option value="venta:2">Venta — Juego 2</option>
+              <option value="venta:3">Venta — Juego 3</option>
+              <option value="venta:4">Venta — Juego 4</option>
+              <option value="venta:5">Venta — Juego 5</option>
+              <option value="venta:6">Venta — Juego 6</option>
+              <option value="venta:7">Venta — Juego 7</option>
+            </optgroup>
+            <optgroup label="🤝 Solidario">
+              <option value="solidario:1">Solidario — Juego 1</option>
+              <option value="solidario:2">Solidario — Juego 2</option>
+              <option value="solidario:3">Solidario — Juego 3</option>
+              <option value="solidario:4">Solidario — Juego 4</option>
+              <option value="solidario:5">Solidario — Juego 5</option>
+              <option value="solidario:6">Solidario — Juego 6</option>
+              <option value="solidario:7">Solidario — Juego 7</option>
+            </optgroup>
           </select>
           <button id="btnExportarExcel" class="btn-descarga" onclick="descargarBaseDatosExcel()">🟢 Descargar Excel (Formato Oficial)</button>
           <button id="btnInformePDF" class="btn-descarga" style="background:#c0392b;" onclick="generarInformePDF()">📄 Descargar Informe PDF</button>
+        </div>
+      </div>
+
+      <div class="tarjeta" style="margin-bottom:20px; padding:20px;">
+        <h3 style="margin-top:0;">🔗 Enlaces para Compartir</h3>
+        <p style="font-size:0.85rem; color:#7f8c8d; margin-top:-8px;">
+          Copia estos enlaces tal cual — ya traen tu identificador correcto (tenant), así evitas escribirlo a mano y equivocarte.
+        </p>
+
+        <label style="font-weight:bold; font-size:0.85rem;">🎟️ Registro de Venta (con login):</label>
+        <div style="display:flex; gap:8px; margin-bottom:14px;">
+          <input type="text" id="linkRegistroVenta" readonly style="flex:1; padding:8px; border:1px solid #ccc; border-radius:6px; background:#f8f9fa; font-size:0.85rem;">
+          <button type="button" onclick="copiarLinkRegistro('linkRegistroVenta')" style="width:auto; padding:8px 12px; background:#2980b9; color:white; border:none; border-radius:6px; cursor:pointer;">Copiar</button>
+          <button type="button" onclick="window.open(document.getElementById('linkRegistroVenta').value, '_blank')" style="width:auto; padding:8px 12px; background:#3498db; color:white; border:none; border-radius:6px; cursor:pointer;">Abrir</button>
+        </div>
+
+        <label style="font-weight:bold; font-size:0.85rem;">🤝 Registro Solidario (SIN login):</label>
+        <div style="display:flex; gap:8px;">
+          <input type="text" id="linkRegistroSolidario" readonly style="flex:1; padding:8px; border:1px solid #ccc; border-radius:6px; background:#f8f9fa; font-size:0.85rem;">
+          <button type="button" onclick="copiarLinkRegistro('linkRegistroSolidario')" style="width:auto; padding:8px 12px; background:#27ae60; color:white; border:none; border-radius:6px; cursor:pointer;">Copiar</button>
+          <button type="button" onclick="window.open(document.getElementById('linkRegistroSolidario').value, '_blank')" style="width:auto; padding:8px 12px; background:#2ecc71; color:white; border:none; border-radius:6px; cursor:pointer;">Abrir</button>
         </div>
       </div>
 
@@ -356,6 +389,8 @@
       window.MI_TENANT_ID = acceso.perfil.tenant_id;
       window.MI_TENANT_NOMBRE = (acceso.tenant && acceso.tenant.nombre) ? acceso.tenant.nombre : "TuBingo Pro";
       window.MI_TENANT_LOGO_URL = (acceso.tenant && acceso.tenant.logo_url) ? acceso.tenant.logo_url : null;
+      window.MI_TENANT_SLUG = (acceso.tenant && acceso.tenant.slug) ? acceso.tenant.slug : "";
+      llenarLinksDeRegistro();
 
       document.getElementById("correoAdminActivo").innerText = acceso.session.user.email;
       mostrarEstadoDelTenant(acceso);
@@ -847,6 +882,26 @@
        límite de cartones opcional propio para ese código.
        ========================================================================= */
     let codigosCanalCache = [];
+
+    // Arma los 2 links (venta y solidario) con el slug real del tenant —
+    // así nunca se escribe el "?tenant=" a mano y no hay riesgo de errores.
+    function llenarLinksDeRegistro() {
+      const base = window.location.origin + window.location.pathname.replace(/admin\.html$/, "");
+      const slug = window.MI_TENANT_SLUG || "";
+      document.getElementById("linkRegistroVenta").value = base + "registro.html?tenant=" + encodeURIComponent(slug);
+      document.getElementById("linkRegistroSolidario").value = base + "registro-solidario.html?tenant=" + encodeURIComponent(slug);
+    }
+
+    function copiarLinkRegistro(idCampo) {
+      const campo = document.getElementById(idCampo);
+      campo.select();
+      navigator.clipboard.writeText(campo.value).then(() => {
+        alert("✅ Enlace copiado.");
+      }).catch(() => {
+        document.execCommand('copy'); // respaldo para navegadores viejos
+        alert("✅ Enlace copiado.");
+      });
+    }
 
     async function cargarCodigosCanal() {
       const { data, error } = await _supabase
