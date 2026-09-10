@@ -233,10 +233,35 @@
 
       <div class="seccion">
         <h3>Gestión Individual de Cartones (Uno por Uno)</h3>
+
+        <div style="background:#eaf2f8; padding:12px; border-radius:6px; margin-bottom:12px;">
+          <label style="font-weight:bold; font-size:0.85rem;">🎮 Juego a gestionar (esta sección y "Zona de Peligro" solo afectan a este juego):</label>
+          <select id="selectorJuegoGestion" onchange="cargarMetricasDelSistema()" style="width:100%; margin-top:6px; padding:9px 10px; border-radius:6px; border:1px solid #ccc; font-weight:bold; font-size:0.9rem;">
+            <optgroup label="🎟️ Venta">
+              <option value="venta:1">Venta — Juego 1</option>
+              <option value="venta:2">Venta — Juego 2</option>
+              <option value="venta:3">Venta — Juego 3</option>
+              <option value="venta:4">Venta — Juego 4</option>
+              <option value="venta:5">Venta — Juego 5</option>
+              <option value="venta:6">Venta — Juego 6</option>
+              <option value="venta:7">Venta — Juego 7</option>
+            </optgroup>
+            <optgroup label="🤝 Solidario">
+              <option value="solidario:1">Solidario — Juego 1</option>
+              <option value="solidario:2">Solidario — Juego 2</option>
+              <option value="solidario:3">Solidario — Juego 3</option>
+              <option value="solidario:4">Solidario — Juego 4</option>
+              <option value="solidario:5">Solidario — Juego 5</option>
+              <option value="solidario:6">Solidario — Juego 6</option>
+              <option value="solidario:7">Solidario — Juego 7</option>
+            </optgroup>
+          </select>
+        </div>
+
         <input type="text" id="inputBuscar" class="busqueda-input" oninput="filtrarCartones()" placeholder="🔍 Buscar por nombre de cliente, número de celular o serie de cartón...">
 
         <div style="background:#fdf2e9; padding:12px; border-radius:6px; margin:12px 0;">
-          <label style="font-weight:bold; font-size:0.85rem;">🗑️ Eliminar por lote (series o rangos, igual que en el registro):</label>
+          <label style="font-weight:bold; font-size:0.85rem;">🗑️ Eliminar por lote (series o rangos, igual que en el registro) — SOLO dentro del juego seleccionado arriba:</label>
           <div style="display:flex; gap:10px; margin-top:6px; flex-wrap:wrap;">
             <input type="text" id="inputEliminarLote" placeholder="Ej: 00562, 00745, 00852 - 00860" style="flex:1; min-width:220px; padding:8px; border:1px solid #ccc; border-radius:6px;">
             <button class="btn-accion btn-borrar-item" style="width:auto;" onclick="eliminarCartonesPorLote()">Eliminar Lote</button>
@@ -368,8 +393,8 @@
 
       <div class="seccion" style="border: 1px solid #ff7675;">
         <h3 style="color: #d63031;">Zona de Peligro (Cierre de Evento)</h3>
-        <p style="font-size:0.9rem; color:#636e72;">Descarga el respaldo completo en Excel y vacía la base de datos de manera irreversible.</p>
-        <button class="btn-peligro" onclick="procesarLimpiezaAbsoluta()">VACIAR TABLA DE BINGO (BORRADO TOTAL)</button>
+        <p style="font-size:0.9rem; color:#636e72;">Descarga el respaldo en Excel y vacía de manera irreversible <strong>solo el juego que tengas seleccionado arriba en "🎮 Juego a gestionar"</strong> — los otros 13 juegos no se ven afectados.</p>
+        <button class="btn-peligro" onclick="procesarLimpiezaAbsoluta()">VACIAR JUEGO SELECCIONADO (BORRADO TOTAL DE ESE JUEGO)</button>
       </div>
 
     </main>
@@ -523,9 +548,14 @@
 
     async function cargarMetricasDelSistema() {
       try {
+        const seleccionJuego = document.getElementById("selectorJuegoGestion").value; // ej: "venta:1"
+        const [tipoJuego, categoriaJuego] = seleccionJuego.split(":");
+
         const { data: todosLosRegistros, error: errRegistros } = await _supabase
           .from('registros_bingo')
           .select('id, carton, nombre, telefono')
+          .eq('tipo', tipoJuego)
+          .eq('categoria', parseInt(categoriaJuego, 10))
           .order('id', { ascending: false });
 
         if (errRegistros) throw errRegistros;
@@ -673,17 +703,26 @@
       const series = expandirSeriesLote(texto);
       if (series.length === 0) { alert("No se reconoció ninguna serie válida."); return; }
 
-      if (!confirm(`Se buscarán ${series.length} serie(s) para eliminar. ¿Continuar?`)) return;
+      const seleccionJuego = document.getElementById("selectorJuegoGestion").value;
+      const [tipoJuego, categoriaJuego] = seleccionJuego.split(":");
+      const etiquetaJuego = (tipoJuego === 'solidario' ? 'Solidario' : 'Venta') + ' — Juego ' + categoriaJuego;
+
+      if (!confirm(`Se buscarán ${series.length} serie(s) para eliminar, SOLO dentro de "${etiquetaJuego}" (el mismo número puede existir en otros juegos y no se tocará). ¿Continuar?`)) return;
 
       try {
+        // ← CORREGIDO: antes buscaba la serie en TODA la tabla, lo que
+        // podía borrar el mismo número de cartón de otro juego distinto.
+        // Ahora solo busca dentro del juego seleccionado arriba.
         const { data: encontrados, error: errBuscar } = await _supabase
           .from('registros_bingo')
           .select('id, carton')
+          .eq('tipo', tipoJuego)
+          .eq('categoria', parseInt(categoriaJuego, 10))
           .in('carton', series);
         if (errBuscar) throw errBuscar;
 
         if (!encontrados || encontrados.length === 0) {
-          alert("No se encontró ningún cartón registrado con esas series.");
+          alert(`No se encontró ningún cartón con esas series dentro de "${etiquetaJuego}".`);
           return;
         }
 
@@ -867,12 +906,34 @@
     }
 
     async function procesarLimpiezaAbsoluta() {
-      if (confirm("¿Vaciar todo?") && prompt("Escriba BORRAR") === "BORRAR") {
-        await descargarBaseDatosExcel();
-        await _supabase.rpc('vaciar_tabla_bingo');
-        await registrarLog("Vaciar tabla de cartones", "Se vació TODA la tabla de registros_bingo de este cliente");
-        alert("Base de datos limpia.");
-        cargarMetricasDelSistema();
+      const seleccionJuego = document.getElementById("selectorJuegoGestion").value; // ej: "venta:1"
+      const [tipoJuego, categoriaJuego] = seleccionJuego.split(":");
+      const etiquetaJuego = (tipoJuego === 'solidario' ? 'Solidario' : 'Venta') + ' — Juego ' + categoriaJuego;
+
+      if (confirm(`¿Vaciar TODO el juego "${etiquetaJuego}"? Los otros 13 juegos NO se tocan. Esta acción no se puede deshacer.`)
+          && prompt('Escriba BORRAR para confirmar') === "BORRAR") {
+        try {
+          // Aseguramos que el respaldo en Excel sea del MISMO juego que se va a borrar
+          document.getElementById("selectorListaDescarga").value = seleccionJuego;
+          await descargarBaseDatosExcel();
+
+          // ← CORREGIDO: antes vaciaba TODA la tabla del tenant (los 14
+          // juegos de golpe, vía el RPC "vaciar_tabla_bingo"). Ahora borra
+          // SOLO el juego seleccionado arriba, con un DELETE directo.
+          const { error } = await _supabase
+            .from('registros_bingo')
+            .delete()
+            .eq('tenant_id', window.MI_TENANT_ID)
+            .eq('tipo', tipoJuego)
+            .eq('categoria', parseInt(categoriaJuego, 10));
+          if (error) throw error;
+
+          await registrarLog("Vaciar tabla de cartones", `Se vació el juego "${etiquetaJuego}" de registros_bingo`);
+          alert(`✅ El juego "${etiquetaJuego}" quedó vacío. Los demás juegos no fueron afectados.`);
+          cargarMetricasDelSistema();
+        } catch (err) {
+          alert("Error al vaciar: " + err.message);
+        }
       }
     }
 
