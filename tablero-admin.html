@@ -173,11 +173,7 @@
 
       window.MI_TENANT_ID = acceso.perfil.tenant_id;
       const slug = acceso.tenant ? acceso.tenant.slug : '';
-      const baseTablero = window.location.origin + window.location.pathname.replace('tablero-admin.html', 'tablero.html');
-      document.getElementById("linkPublico").value = baseTablero + '?tenant=' + encodeURIComponent(slug);
-
-      const basePreview = window.location.origin + window.location.pathname.replace('tablero-admin.html', 'tablero-preview.html');
-      document.getElementById("linkPrivado").value = basePreview + '?tenant=' + encodeURIComponent(slug);
+      await llenarLinksDelTablero(slug);
 
       construirGridNumeros();
       construirSlotsCamaras();
@@ -627,6 +623,32 @@
       TABLERO_ACTUAL.camaras = camaras;
 
       try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Actualizar configuración del tablero", p_detalle: `Layout: ${layout}` }); } catch(e) {}
+    }
+
+    // Arma los links del Tablero (público y privado/preview) leyendo el
+    // dominio guardado en superadmin (tabla configuracion_global). Si no
+    // hay ninguno guardado, usa window.location.origin — el mismo
+    // comportamiento de siempre, sin romper nada.
+    async function llenarLinksDelTablero(slug) {
+      const rutaCarpeta = window.location.pathname.replace(/tablero-admin\.html$/, "");
+
+      let origen = window.location.origin;
+      try {
+        const { data, error } = await _supabase
+          .from('configuracion_global')
+          .select('dominio_base')
+          .eq('id', true)
+          .single();
+        if (!error && data?.dominio_base && data.dominio_base.trim() !== "") {
+          origen = data.dominio_base.trim().replace(/\/$/, ""); // sin "/" final
+        }
+      } catch (err) {
+        console.error("No se pudo leer el dominio global, se usa la URL actual:", err.message);
+      }
+
+      const base = origen + rutaCarpeta;
+      document.getElementById("linkPublico").value = base + 'tablero.html?tenant=' + encodeURIComponent(slug);
+      document.getElementById("linkPrivado").value = base + 'tablero-preview.html?tenant=' + encodeURIComponent(slug);
     }
 
     function copiarLink() {
