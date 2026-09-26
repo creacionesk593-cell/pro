@@ -5,17 +5,26 @@
   <title>Redirigiendo...</title>
   <script>
     // GitHub Pages muestra este archivo cuando la URL no existe como carpeta real,
-    // por ejemplo: /pro/triunfobingo
+    // por ejemplo: /pro/triunfobingo  o  /pro/triunfobingo/tablero
     // Detecta automáticamente el nombre de tu repositorio (no hay que escribirlo a mano),
-    // y redirige a index.html pasándole el "slug" del cliente como parámetro.
+    // y redirige a la página correcta pasándole el "slug" del cliente como parámetro.
     (function () {
       const partes = window.location.pathname.split('/').filter(Boolean);
       const nombreRepo = partes[0] || "";
       const slug = partes[1] || "";
+      const pagina = partes[2] || "";
       const base = "/" + nombreRepo + "/";
 
+      // Mapa: palabra corta en la URL → archivo real
+      const paginas = {
+        "tablero": "tablero-preview.html",
+        "registro": "registro.html",
+        "solidario": "registro-solidario.html"
+      };
+
       if (slug && !slug.includes(".")) {
-        window.location.replace(base + "index.html?tenant=" + encodeURIComponent(slug));
+        const archivo = paginas[pagina] || "index.html";
+        window.location.replace(base + archivo + "?tenant=" + encodeURIComponent(slug));
       } else {
         window.location.replace(base + "index.html");
       }
