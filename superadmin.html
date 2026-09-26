@@ -235,6 +235,23 @@
     </div>
 
     <div class="seccion">
+      <h3>🌐 Dominio del Sistema</h3>
+      <p style="font-size:0.85rem; color:#7f8c8d; margin-top:-8px;">
+        Define aquí el dominio que se usará para armar los links que ven tus clientes (en "Todos tus Clientes" abajo,
+        y en los links de registro que genera cada admin en su propio panel). Mientras no compres un dominio propio,
+        déjalo vacío o pon la URL actual de GitHub Pages. El día que compres uno (ej. <code>tub.com</code>), escríbelo
+        aquí — no hay que tocar ningún archivo, todos los links se actualizan solos.
+      </p>
+      <div class="config-flex">
+        <input type="text" id="inputDominioBase" placeholder="ej: https://tub.com  (vacío = usar la URL actual del navegador)">
+        <button class="btn-azul" style="width:auto;" onclick="guardarDominioGlobal()">💾 Guardar Dominio</button>
+      </div>
+      <p style="font-size:0.8rem; color:#7f8c8d; margin-top:8px;">
+        Ejemplo actual: <span id="previewDominioBase" style="font-weight:bold;">—</span>
+      </p>
+    </div>
+
+    <div class="seccion">
       <h3>📋 Todos tus Clientes</h3>
       <div class="table-container">
         <table id="tablaTenants">
@@ -302,12 +319,64 @@
 
   <script>
     let TENANTS_CACHE = [];
-    const BASE_URL_ACTUAL = "/" + (window.location.pathname.split('/').filter(Boolean)[0] || "") + "/";
+
+    // Antes era una constante fija con window.location.origin/pathname.
+    // Ahora: si el super_admin definió un dominio en "Dominio del Sistema",
+    // se arma con ESE dominio; si no, se sigue usando la URL actual del
+    // navegador (mismo comportamiento de siempre, sin romper nada).
+    let DOMINIO_BASE_GUARDADO = ""; // se llena en cargarDominioGlobal()
+    const RUTA_CARPETA_ACTUAL = "/" + (window.location.pathname.split('/').filter(Boolean)[0] || "") + "/";
+
+    function armarBaseUrl() {
+      const origen = DOMINIO_BASE_GUARDADO && DOMINIO_BASE_GUARDADO.trim() !== ""
+        ? DOMINIO_BASE_GUARDADO.trim().replace(/\/$/, "") // sin "/" final, para no duplicarlo
+        : window.location.origin;
+      return origen + RUTA_CARPETA_ACTUAL;
+    }
+
+    async function cargarDominioGlobal() {
+      try {
+        const { data, error } = await _supabase
+          .from('configuracion_global')
+          .select('dominio_base')
+          .eq('id', true)
+          .single();
+        if (error) throw error;
+        DOMINIO_BASE_GUARDADO = data?.dominio_base || "";
+        document.getElementById("inputDominioBase").value = DOMINIO_BASE_GUARDADO;
+        document.getElementById("previewDominioBase").textContent = armarBaseUrl() + "triunfo_bingo";
+      } catch (err) {
+        console.error("No se pudo cargar el dominio global (se usará la URL actual):", err.message);
+      }
+    }
+
+    async function guardarDominioGlobal() {
+      let valor = document.getElementById("inputDominioBase").value.trim();
+      // Se guarda sin "/" al final, para no duplicarlo al combinar con la ruta
+      valor = valor.replace(/\/+$/, "");
+
+      try {
+        const { error } = await _supabase
+          .from('configuracion_global')
+          .update({ dominio_base: valor === "" ? null : valor })
+          .eq('id', true);
+        if (error) throw error;
+
+        DOMINIO_BASE_GUARDADO = valor;
+        document.getElementById("previewDominioBase").textContent = armarBaseUrl() + "triunfo_bingo";
+        await registrarLog("Cambiar dominio del sistema", `Nuevo dominio base: ${valor || "(usar URL actual del navegador)"}`);
+        alert("✅ Dominio actualizado. La tabla de clientes y los links de cada admin ya usan el nuevo dominio.");
+        cargarTenants(); // refresca la columna URL con el dominio nuevo
+      } catch (err) {
+        alert("❌ Error guardando el dominio: " + err.message);
+      }
+    }
 
     window.addEventListener('load', async () => {
       const acceso = await requerirSesion('super_admin');
       if (!acceso) return;
 
+      await cargarDominioGlobal();
       await cargarTenants();
       await cargarPlanes();
       await cargarReporteMetricas();
@@ -358,7 +427,7 @@
           tbody.innerHTML += `
             <tr>
               <td>${t.nombre}</td>
-              <td>${BASE_URL_ACTUAL}${t.slug}</td>
+              <td>${armarBaseUrl()}${t.slug}</td>
               <td class="${estadoClase}">${estadoTexto}</td>
               <td>${vence ? new Date(vence).toLocaleDateString('es-EC') : '—'}</td>
               <td>
@@ -457,7 +526,7 @@
         await _supabase.from('configuracion').insert({ tenant_id: data.id, limite_cartones: 5, caracteres_qr: 6, fecha_cierre: new Date(Date.now() + 30*24*60*60*1000).toISOString() });
         await registrarLog(data.id, "Crear cliente", `Cliente "${nombre}" creado con slug "${slug}"`);
 
-        alert(`✅ Cliente "${nombre}" creado. URL: ${BASE_URL_ACTUAL}${slug}`);
+        alert(`✅ Cliente "${nombre}" creado. URL: ${armarBaseUrl()}${slug}`);
         document.getElementById("nuevoSlug").value = "";
         document.getElementById("nuevoNombreTenant").value = "";
         document.getElementById("nuevoLogoTenant").value = "";
