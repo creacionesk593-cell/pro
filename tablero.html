@@ -99,16 +99,31 @@
       <strong style="font-size:0.9rem;">🏆 ¡Avisar BINGO!</strong>
       <span onclick="cerrarModalBingo()" style="cursor:pointer; font-size:1.1rem; line-height:1;">✕</span>
     </div>
-    <div style="padding:14px;">
-      <p style="font-size:0.75rem; color:#94a3b8; margin:0 0 10px 0;">Escribe tu nombre y la serie de tu(s) cartón(es) ganador(es). El organizador lo revisará.</p>
+    <div style="padding:14px; max-height:70vh; overflow-y:auto;">
+      <p style="font-size:0.75rem; color:#94a3b8; margin:0 0 10px 0;">Si ganaste con más de un cartón (para el mismo premio o para premios distintos), agrega una fila por cada uno. El organizador revisará cada uno por separado.</p>
       <label style="display:block; font-size:0.75rem; margin-bottom:4px;">Tu nombre:</label>
-      <input type="text" id="inputNombreBingo" placeholder="Ej: Ana Pérez" style="width:100%; padding:8px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:white; box-sizing:border-box; margin-bottom:10px; font-size:0.85rem;">
-      <label style="display:block; font-size:0.75rem; margin-bottom:4px;">Serie de tu(s) cartón(es):</label>
-      <textarea id="inputSerieBingo" placeholder="Ej: 4521 o 4521, 8890" rows="2" style="width:100%; padding:8px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:white; box-sizing:border-box; resize:vertical; font-size:0.85rem;"></textarea>
-      <div id="estadoEnvioBingo" style="font-size:0.75rem; margin-top:6px; min-height:16px;"></div>
+      <input type="text" id="inputNombreBingo" placeholder="Ej: Ana Pérez" style="width:100%; padding:8px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:white; box-sizing:border-box; margin-bottom:12px; font-size:0.85rem;">
+
+      <div id="filasReclamoBingo"></div>
+
+      <button type="button" onclick="agregarFilaReclamoBingo()" style="width:100%; padding:8px; margin-top:4px; background:transparent; color:#e74c3c; border:1px dashed #e74c3c; border-radius:6px; cursor:pointer; font-size:0.8rem;">+ Agregar otro cartón / premio</button>
+
+      <div id="estadoEnvioBingo" style="font-size:0.75rem; margin-top:8px; min-height:16px;"></div>
       <button onclick="enviarReclamoBingo()" style="width:100%; margin-top:10px; padding:9px; background:#e74c3c; color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.85rem;">Enviar</button>
     </div>
   </div>
+
+  <template id="plantillaFilaReclamoBingo">
+    <div class="fila-reclamo-bingo" style="border:1px solid #334155; border-radius:8px; padding:8px; margin-bottom:8px; position:relative;">
+      <span class="btn-quitar-fila" onclick="quitarFilaReclamoBingo(this)" style="position:absolute; top:6px; right:8px; cursor:pointer; color:#94a3b8; font-size:0.9rem; display:none;">✕</span>
+      <label style="display:block; font-size:0.7rem; margin-bottom:3px; color:#94a3b8;">¿Qué premio ganaste con este cartón?</label>
+      <select class="select-premio-fila" style="width:100%; padding:7px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:white; box-sizing:border-box; margin-bottom:8px; font-size:0.85rem;">
+        <option value="">No estoy seguro / otro</option>
+      </select>
+      <label style="display:block; font-size:0.7rem; margin-bottom:3px; color:#94a3b8;">Serie del cartón:</label>
+      <input type="text" class="input-serie-fila" placeholder="Ej: 4521" style="width:100%; padding:7px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:white; box-sizing:border-box; font-size:0.85rem;">
+    </div>
+  </template>
 
   <!-- Animación de "¡GANASTE!" con confeti, se muestra solo al navegador que envió ese aviso -->
   <div id="overlayGanador" style="display:none; position:fixed; inset:0; z-index:10000; align-items:center; justify-content:center; pointer-events:none;">
@@ -294,6 +309,8 @@
       if (contenido) contenido.style.transform = transformAnterior;
     }
 
+    let JUEGOS_DISPONIBLES_ACTUALES = []; // para llenar el selector "¿Qué premio ganaste?"
+
     async function cargarJuegosPublico() {
       const { data } = await _supabase.from('tablero_juegos').select('*').eq('tenant_id', MI_TENANT_ID).order('orden', { ascending: true });
       const cont = document.getElementById("listaJuegosPublico");
@@ -301,6 +318,10 @@
       if (!data || data.length === 0) { cont.innerHTML = ""; } else {
         cont.innerHTML = data.map(j => `<span class="juego-chip ${j.disponible ? '' : 'no-disponible'}">${j.nombre}</span>`).join("");
       }
+
+      JUEGOS_DISPONIBLES_ACTUALES = (data || []).filter(j => j.disponible);
+      actualizarOpcionesPremioEnFilas();
+
       ajustarAnchoPanelJuegos();
       ajustarEscala();
     }
@@ -642,16 +663,57 @@
     }
 
     /* =========================================================================
-       BOTÓN DE "BINGO" — el espectador avisa que ganó, escribiendo su nombre
-       y la serie de su(s) cartón(es). Se guarda en tablero_bingo_reclamos
-       para que el organizador lo revise en tablero-admin.html. No bloquea el
-       botón: cualquiera puede volver a presionarlo (puede haber más de un
-       ganador en la misma partida).
+       BOTÓN DE "BINGO" — el espectador avisa que ganó. Puede agregar UNA FILA
+       por cada cartón ganador, indicando a qué premio corresponde cada uno
+       (un jugador con muchos cartones puede haber ganado premios distintos
+       con cartones distintos, todo en el mismo aviso). Se guarda en
+       tablero_bingo_reclamos (una fila por cartón) para que el organizador
+       lo revise en tablero-admin.html. No bloquea el botón: puede volver a
+       presionarlo más tarde si se da cuenta de que ganó con otro cartón.
        El panel se muestra anclado junto al botón (como un chat), no en el
        centro de la pantalla.
        ========================================================================= */
+    function opcionesPremioHtml() {
+      return `<option value="">No estoy seguro / otro</option>` +
+        JUEGOS_DISPONIBLES_ACTUALES.map(j => `<option value="${j.id}">${j.nombre}</option>`).join("");
+    }
+
+    function actualizarOpcionesPremioEnFilas() {
+      document.querySelectorAll("#filasReclamoBingo .select-premio-fila").forEach(sel => {
+        const valorPrevio = sel.value;
+        sel.innerHTML = opcionesPremioHtml();
+        if ([...sel.options].some(o => o.value === valorPrevio)) sel.value = valorPrevio;
+      });
+    }
+
+    function agregarFilaReclamoBingo() {
+      const plantilla = document.getElementById("plantillaFilaReclamoBingo");
+      const nodo = plantilla.content.cloneNode(true);
+      nodo.querySelector(".select-premio-fila").innerHTML = opcionesPremioHtml();
+      document.getElementById("filasReclamoBingo").appendChild(nodo);
+      actualizarBotonesQuitarFila();
+    }
+
+    function quitarFilaReclamoBingo(botonEl) {
+      botonEl.closest(".fila-reclamo-bingo").remove();
+      actualizarBotonesQuitarFila();
+    }
+
+    // El botón "✕" para quitar una fila solo se muestra si hay más de una
+    // (siempre debe quedar al menos una fila visible en el formulario).
+    function actualizarBotonesQuitarFila() {
+      const filas = document.querySelectorAll("#filasReclamoBingo .fila-reclamo-bingo");
+      filas.forEach(fila => {
+        const btn = fila.querySelector(".btn-quitar-fila");
+        if (btn) btn.style.display = filas.length > 1 ? "block" : "none";
+      });
+    }
+
     function abrirModalBingo() {
       document.getElementById("estadoEnvioBingo").innerText = "";
+      document.getElementById("inputNombreBingo").value = "";
+      document.getElementById("filasReclamoBingo").innerHTML = "";
+      agregarFilaReclamoBingo(); // arranca siempre con 1 fila lista
       document.getElementById("panelBingo").style.display = "block";
     }
 
@@ -670,12 +732,20 @@
 
     async function enviarReclamoBingo() {
       const nombre = document.getElementById("inputNombreBingo").value.trim();
-      const serie = document.getElementById("inputSerieBingo").value.trim();
       const estado = document.getElementById("estadoEnvioBingo");
 
-      if (!serie) {
+      const filas = Array.from(document.querySelectorAll("#filasReclamoBingo .fila-reclamo-bingo"));
+      const registros = filas.map(fila => {
+        const serie = fila.querySelector(".input-serie-fila").value.trim();
+        const selectPremio = fila.querySelector(".select-premio-fila");
+        const juegoId = selectPremio.value || null;
+        const juegoNombre = juegoId ? selectPremio.options[selectPremio.selectedIndex].text : null;
+        return { serie, juegoId, juegoNombre };
+      }).filter(r => r.serie !== ""); // ignora filas que quedaron vacías
+
+      if (registros.length === 0) {
         estado.style.color = "#e74c3c";
-        estado.innerText = "⚠️ Escribe la serie de tu cartón.";
+        estado.innerText = "⚠️ Escribe la serie de al menos un cartón.";
         return;
       }
       if (!MI_TENANT_ID) return;
@@ -684,21 +754,36 @@
       estado.innerText = "Enviando...";
 
       try {
+        const filasParaInsertar = registros.map(r => ({
+          tenant_id: MI_TENANT_ID,
+          nombre: nombre || null,
+          serie: r.serie,
+          juego_id: r.juegoId,
+          juego_nombre: r.juegoNombre
+        }));
+
         const { data, error } = await _supabase.from('tablero_bingo_reclamos')
-          .insert({ tenant_id: MI_TENANT_ID, nombre: nombre || null, serie: serie })
-          .select()
-          .single();
+          .insert(filasParaInsertar)
+          .select();
         if (error) throw error;
 
-        guardarMiReclamoBingo(data.id); // para poder reconocer luego si ESTE aviso resultó ganador
+        // Guarda el ID de CADA cartón enviado — así, si el organizador confirma
+        // cualquiera de ellos como ganador, se reconoce y muestra la animación.
+        (data || []).forEach(fila => guardarMiReclamoBingo(fila.id));
 
         estado.style.color = "#2ecc71";
-        estado.innerText = "✅ ¡Enviado! Espera la confirmación del organizador.";
-        document.getElementById("inputSerieBingo").value = "";
+        estado.innerText = `✅ ¡Enviado${registros.length > 1 ? 's ' + registros.length + ' cartones' : ''}! Espera la confirmación del organizador.`;
         setTimeout(cerrarModalBingo, 1800);
       } catch (err) {
         estado.style.color = "#e74c3c";
-        estado.innerText = "❌ No se pudo enviar: " + err.message;
+        // El error de "row-level security" significa que, en este momento,
+        // el organizador tiene el botón de BINGO desactivado — no es una
+        // falla del sistema, es la condición que activa/desactiva el envío.
+        if (err.message && err.message.includes("row-level security")) {
+          estado.innerText = "⚠️ El organizador no tiene activado el aviso de BINGO en este momento. Avísale directamente.";
+        } else {
+          estado.innerText = "❌ No se pudo enviar: " + err.message;
+        }
       }
     }
 
