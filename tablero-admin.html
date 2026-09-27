@@ -187,53 +187,57 @@
       const acceso = await requerirSesion('admin');
       if (!acceso) return;
 
-      window.MI_TENANT_ID = acceso.perfil.tenant_id;
-      const slug = acceso.tenant ? acceso.tenant.slug : '';
-      const baseTablero = window.location.origin + window.location.pathname.replace('tablero-admin.html', 'tablero.html');
-      document.getElementById("linkPublico").value = baseTablero + '?tenant=' + encodeURIComponent(slug);
+      try {
+        window.MI_TENANT_ID = acceso.perfil.tenant_id;
+        const slug = acceso.tenant ? acceso.tenant.slug : '';
+        await llenarLinksDelTablero(slug);
 
-      const basePreview = window.location.origin + window.location.pathname.replace('tablero-admin.html', 'tablero-preview.html');
-      document.getElementById("linkPrivado").value = basePreview + '?tenant=' + encodeURIComponent(slug);
+        construirGridNumeros();
+        construirSlotsCamaras();
+        await cargarTablero();
+        await cargarJuegos();
 
-      construirGridNumeros();
-      construirSlotsCamaras();
-      await cargarTablero();
-      await cargarJuegos();
+        if (acceso.habilitado === false) {
+          // Deja ver el enlace público y el historial, pero bloquea cualquier
+          // acción que modifique el tablero (marcar números, reiniciar,
+          // cámaras, subir/borrar galería).
+          bloquearPorSuscripcionVencida(["btnMarcarManual", "btnReiniciarPartida", "btnGuardarCamaras", "inputNumeroManual", "chkVisiblePublico", "chkBotonBingoActivo"]);
+          ["seccionMarcarNumeros", "seccionCamaras"].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) {
+              el.style.pointerEvents = "none";
+              el.style.opacity = "0.5";
+              el.style.userSelect = "none";
+            }
+          });
+        }
 
-      if (acceso.habilitado === false) {
-        // Deja ver el enlace público y el historial, pero bloquea cualquier
-        // acción que modifique el tablero (marcar números, reiniciar,
-        // cámaras, subir/borrar galería).
-        bloquearPorSuscripcionVencida(["btnMarcarManual", "btnReiniciarPartida", "btnGuardarCamaras", "inputNumeroManual", "chkVisiblePublico", "chkBotonBingoActivo"]);
-        ["seccionMarcarNumeros", "seccionCamaras"].forEach((id) => {
-          const el = document.getElementById(id);
-          if (el) {
-            el.style.pointerEvents = "none";
-            el.style.opacity = "0.5";
-            el.style.userSelect = "none";
-          }
-        });
+        _supabase.channel('tablero_admin_' + window.MI_TENANT_ID)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'tablero_bingo', filter: `tenant_id=eq.${window.MI_TENANT_ID}` }, (payload) => {
+            if (payload.new) { TABLERO_ACTUAL = payload.new; pintarEstado(); }
+          })
+          .subscribe();
+
+        _supabase.channel('bingo_reclamos_' + window.MI_TENANT_ID)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'tablero_bingo_reclamos', filter: `tenant_id=eq.${window.MI_TENANT_ID}` }, () => {
+            cargarAvisosBingo();
+          })
+          .subscribe();
+
+        await cargarAvisosBingo();
+
+        _supabase.channel('juegos_admin_' + window.MI_TENANT_ID)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'tablero_juegos', filter: `tenant_id=eq.${window.MI_TENANT_ID}` }, () => {
+            cargarJuegos();
+          })
+          .subscribe();
+      } catch (errorInicial) {
+        // Antes, un error aquí dejaba TODO en blanco sin ninguna pista visible
+        // (links vacíos, checkboxes sin marcar, avisos colgados). Ahora se ve
+        // el error real, para poder diagnosticar sin adivinar.
+        console.error("Error inicializando el panel:", errorInicial);
+        alert("⚠️ Ocurrió un error cargando el panel:\n\n" + errorInicial.message + "\n\nRevisa la consola (F12) para más detalle, o comparte este mensaje.");
       }
-
-      _supabase.channel('tablero_admin_' + window.MI_TENANT_ID)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'tablero_bingo', filter: `tenant_id=eq.${window.MI_TENANT_ID}` }, (payload) => {
-          if (payload.new) { TABLERO_ACTUAL = payload.new; pintarEstado(); }
-        })
-        .subscribe();
-
-      _supabase.channel('bingo_reclamos_' + window.MI_TENANT_ID)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'tablero_bingo_reclamos', filter: `tenant_id=eq.${window.MI_TENANT_ID}` }, () => {
-          cargarAvisosBingo();
-        })
-        .subscribe();
-
-      await cargarAvisosBingo();
-
-      _supabase.channel('juegos_admin_' + window.MI_TENANT_ID)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'tablero_juegos', filter: `tenant_id=eq.${window.MI_TENANT_ID}` }, () => {
-          cargarJuegos();
-        })
-        .subscribe();
 
       // Contador "EN VIVO" — Supabase Realtime Presence (no persiste en BD)
       const canalPresencia = _supabase.channel('presencia_' + window.MI_TENANT_ID, {
@@ -450,6 +454,32 @@
       } catch (err) {
         alert("❌ Error: " + err.message);
       }
+    }
+
+    // Arma los links del Tablero (público y privado/preview) leyendo el
+    // dominio guardado en superadmin (tabla configuracion_global). Si no
+    // hay ninguno guardado, o falla la consulta, usa window.location.origin
+    // — el mismo comportamiento de siempre, sin romper nada.
+    async function llenarLinksDelTablero(slug) {
+      const rutaCarpeta = window.location.pathname.replace(/tablero-admin\.html$/, "");
+
+      let origen = window.location.origin;
+      try {
+        const { data, error } = await _supabase
+          .from('configuracion_global')
+          .select('dominio_base')
+          .eq('id', true)
+          .single();
+        if (!error && data?.dominio_base && data.dominio_base.trim() !== "") {
+          origen = data.dominio_base.trim().replace(/\/$/, ""); // sin "/" final
+        }
+      } catch (err) {
+        console.error("No se pudo leer el dominio global, se usa la URL actual:", err.message);
+      }
+
+      const base = origen + rutaCarpeta;
+      document.getElementById("linkPublico").value = base + 'tablero.html?tenant=' + encodeURIComponent(slug);
+      document.getElementById("linkPrivado").value = base + 'tablero-preview.html?tenant=' + encodeURIComponent(slug);
     }
 
     async function cargarTablero() {
