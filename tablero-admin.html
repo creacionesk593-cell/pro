@@ -853,6 +853,7 @@
               <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
                 <div>
                   <strong>${nombre}</strong> ${!r.revisado ? '<span style="color:#f39c12; font-weight:bold;">🔔 Nuevo</span>' : ''}<br>
+                  ${r.juego_nombre ? `<span style="font-size:0.9rem;">🏆 Premio: <strong>${r.juego_nombre}</strong></span><br>` : `<span style="font-size:0.85rem; color:#7f8c8d;">Premio no especificado</span><br>`}
                   <span style="font-size:0.9rem;">Serie(s) enviada(s): <strong>${r.serie}</strong></span><br>
                   <span style="font-size:0.75rem; color:#7f8c8d;">${hora}</span>
                   ${estadoHtml}
