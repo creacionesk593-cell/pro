@@ -699,12 +699,18 @@
         return;
       }
 
-      cont.innerHTML = data.map(j => `
+      cont.innerHTML = data.map((j, i) => `
         <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; border:1px solid #eee; border-radius:6px; margin-bottom:8px; ${j.disponible ? '' : 'opacity:0.6;'}">
-          <div>
-            <strong>${j.nombre}</strong>
-            ${j.precio > 0 ? ` — $${Number(j.precio).toFixed(2)}` : ''}
-            ${!j.disponible ? ' <span style="color:#e74c3c; font-weight:bold;">(YA NO DISPONIBLE)</span>' : ''}
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div style="display:flex; flex-direction:column; gap:2px;">
+              <button class="accion" style="margin:0; width:auto; padding:2px 8px; font-size:0.75rem; background:${i === 0 ? '#ccc' : '#7f8c8d'};" ${i === 0 ? 'disabled' : ''} onclick="moverJuego(${j.id}, -1)">▲</button>
+              <button class="accion" style="margin:0; width:auto; padding:2px 8px; font-size:0.75rem; background:${i === data.length - 1 ? '#ccc' : '#7f8c8d'};" ${i === data.length - 1 ? 'disabled' : ''} onclick="moverJuego(${j.id}, 1)">▼</button>
+            </div>
+            <div>
+              <strong>${j.nombre}</strong>
+              ${j.precio > 0 ? ` — $${Number(j.precio).toFixed(2)}` : ''}
+              ${!j.disponible ? ' <span style="color:#e74c3c; font-weight:bold;">(YA NO DISPONIBLE)</span>' : ''}
+            </div>
           </div>
           <div style="display:flex; gap:6px;">
             <button class="accion" style="margin:0; padding:6px 10px; font-size:0.8rem; background:${j.disponible ? '#e74c3c' : '#2ecc71'};" onclick="alternarDisponibilidadJuego(${j.id}, ${j.disponible})">
@@ -713,6 +719,23 @@
             <button class="accion" style="margin:0; padding:6px 10px; font-size:0.8rem; background:#95a5a6;" onclick="eliminarJuego(${j.id})">Eliminar</button>
           </div>
         </div>`).join("");
+    }
+
+    async function moverJuego(id, direccion) {
+      const { data, error } = await _supabase.from('tablero_juegos').select('*').eq('tenant_id', window.MI_TENANT_ID).order('orden', { ascending: true });
+      if (error) { alert("❌ " + error.message); return; }
+
+      const idx = data.findIndex(j => j.id === id);
+      const idxVecino = idx + direccion;
+      if (idx === -1 || idxVecino < 0 || idxVecino >= data.length) return; // ya está en el extremo
+
+      const actual = data[idx];
+      const vecino = data[idxVecino];
+
+      // Intercambia el "orden" entre los dos, así se recorre solo un puesto
+      await _supabase.from('tablero_juegos').update({ orden: vecino.orden }).eq('id', actual.id);
+      await _supabase.from('tablero_juegos').update({ orden: actual.orden }).eq('id', vecino.id);
+      await cargarJuegos();
     }
 
     async function agregarJuego() {
@@ -770,19 +793,46 @@
         cont.innerHTML = data.map(r => {
           const hora = new Date(r.creado_en).toLocaleString('es-EC', { dateStyle: 'short', timeStyle: 'short' });
           const nombre = r.nombre ? r.nombre : '(sin nombre)';
-          const fondo = r.revisado ? '#f8f9fa' : '#fff9e6';
-          const borde = r.revisado ? '#ddd' : '#f1c40f';
+          const series = r.serie.split(',').map(s => s.trim()).filter(Boolean);
+
+          let fondo = '#fff9e6', borde = '#f1c40f', estadoHtml = '';
+
+          if (r.revisado) {
+            if (r.ganador === true) {
+              fondo = '#eafaf1'; borde = '#2ecc71';
+              estadoHtml = `<div style="margin-top:6px;">🏆 <strong>Ganador confirmado</strong> — serie: <strong>${r.serie_ganadora || r.serie}</strong></div>`;
+            } else {
+              fondo = '#f8f9fa'; borde = '#ddd';
+              estadoHtml = `<div style="margin-top:6px; color:#7f8c8d;">Revisado — no fue ganador</div>`;
+            }
+          }
+
+          // Mientras esté pendiente: casillas para elegir cuál(es) serie(s) ganaron
+          const bloqueSeleccion = !r.revisado ? `
+            <div class="series-check" style="margin-top:8px; font-size:0.85rem;">
+              ${series.map(s => `<label style="display:block; padding:2px 0;"><input type="checkbox" class="chk-serie" value="${s}"> Serie <strong>${s}</strong></label>`).join("")}
+            </div>` : '';
+
+          const botones = !r.revisado ? `
+              <button class="accion" style="margin:0; width:auto; background:#2ecc71; padding:8px 12px;" onclick="confirmarGanadorBingo('${r.id}')">🏆 Confirmar Ganador</button>
+              <button class="accion" style="margin:0; width:auto; background:#95a5a6; padding:8px 12px;" onclick="marcarNoGanadorBingo('${r.id}')">❌ No ganó</button>` : `
+              <button class="accion" style="margin:0; width:auto; background:#3498db; padding:8px 12px;" onclick="reabrirAvisoBingo('${r.id}')">↩️ Reabrir</button>`;
+
           return `
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; background:${fondo}; border:1px solid ${borde}; border-radius:8px; padding:12px; margin-bottom:8px;">
-              <div>
-                <strong>${nombre}</strong> ${r.revisado ? '' : '<span style="color:#f39c12; font-weight:bold;">🔔 Nuevo</span>'}<br>
-                <span style="font-size:0.9rem;">Serie: <strong>${r.serie}</strong></span><br>
-                <span style="font-size:0.75rem; color:#7f8c8d;">${hora}</span>
+            <div class="fila-reclamo" data-id="${r.id}" style="background:${fondo}; border:1px solid ${borde}; border-radius:8px; padding:12px; margin-bottom:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
+                <div>
+                  <strong>${nombre}</strong> ${!r.revisado ? '<span style="color:#f39c12; font-weight:bold;">🔔 Nuevo</span>' : ''}<br>
+                  <span style="font-size:0.9rem;">Serie(s) enviada(s): <strong>${r.serie}</strong></span><br>
+                  <span style="font-size:0.75rem; color:#7f8c8d;">${hora}</span>
+                  ${estadoHtml}
+                </div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                  ${botones}
+                  <button class="accion" style="margin:0; width:auto; background:#e74c3c; padding:8px 12px;" onclick="eliminarAvisoBingo('${r.id}')">🗑️ Descartar</button>
+                </div>
               </div>
-              <div style="display:flex; gap:8px;">
-                ${!r.revisado ? `<button class="accion" style="margin:0; width:auto; background:#2ecc71; padding:8px 12px;" onclick="marcarAvisoBingoRevisado('${r.id}')">✔️ Revisado</button>` : ''}
-                <button class="accion" style="margin:0; width:auto; background:#e74c3c; padding:8px 12px;" onclick="eliminarAvisoBingo('${r.id}')">🗑️ Descartar</button>
-              </div>
+              ${bloqueSeleccion}
             </div>`;
         }).join("");
       } catch (err) {
@@ -790,8 +840,33 @@
       }
     }
 
-    async function marcarAvisoBingoRevisado(id) {
-      const { error } = await _supabase.from('tablero_bingo_reclamos').update({ revisado: true }).eq('id', id);
+    async function confirmarGanadorBingo(id) {
+      const fila = document.querySelector(`.fila-reclamo[data-id="${id}"]`);
+      const seleccionadas = Array.from(fila.querySelectorAll('.chk-serie:checked')).map(c => c.value);
+      if (seleccionadas.length === 0) {
+        alert("Marca al menos una serie como ganadora (o usa \"❌ No ganó\" si ninguna es correcta).");
+        return;
+      }
+      const serieGanadora = seleccionadas.join(", ");
+      const { error } = await _supabase.from('tablero_bingo_reclamos')
+        .update({ ganador: true, revisado: true, serie_ganadora: serieGanadora })
+        .eq('id', id);
+      if (error) { alert("❌ " + error.message); return; }
+      try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Confirmar ganador de BINGO", p_detalle: `Serie: ${serieGanadora}` }); } catch(e) {}
+      await cargarAvisosBingo();
+    }
+
+    async function marcarNoGanadorBingo(id) {
+      const { error } = await _supabase.from('tablero_bingo_reclamos').update({ ganador: false, revisado: true }).eq('id', id);
+      if (error) { alert("❌ " + error.message); return; }
+      await cargarAvisosBingo();
+    }
+
+    async function reabrirAvisoBingo(id) {
+      const { error } = await _supabase.from('tablero_bingo_reclamos').update({ ganador: null, revisado: false, serie_ganadora: null }).eq('id', id);
+      if (error) { alert("❌ " + error.message); return; }
+      await cargarAvisosBingo();
+    }
       if (error) { alert("❌ " + error.message); return; }
       await cargarAvisosBingo();
     }
