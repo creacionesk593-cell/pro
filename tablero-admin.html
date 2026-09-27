@@ -837,6 +837,13 @@
         }).join("");
       } catch (err) {
         console.error("Error cargando avisos de BINGO:", err.message);
+        const cont = document.getElementById("listaAvisosBingo");
+        if (cont) {
+          cont.innerHTML = `<p style="color:#e74c3c; text-align:center; font-size:0.85rem;">
+            ❌ No se pudieron cargar los avisos: ${err.message}<br>
+            <span style="color:#7f8c8d;">Revisa que hayas corrido <code>sql_boton_bingo.sql</code> y <code>sql_boton_bingo_v2.sql</code> completos en Supabase (SQL Editor), sin errores.</span>
+          </p>`;
+        }
       }
     }
 
