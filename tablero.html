@@ -266,27 +266,32 @@
 
     let TAMANO_FUENTE_JUEGOS = 16;
 
-    // En modo horizontal, evita que el panel de premios se extienda más
-    // ancho que la cuadrícula de números — si no caben en una línea,
-    // el resto pasa a la línea de abajo (gracias a flex-wrap).
+    // Evita que el panel de premios se extienda más ancho que la cuadrícula
+    // de números — si no caben en una línea, el resto pasa a la línea de
+    // abajo (gracias a flex-wrap). Esto aplica en CUALQUIER layout: sin este
+    // límite, el navegador calcula el ancho del panel como si los premios no
+    // se envolvieran, estirándolo muchísimo — y eso obliga a ajustarEscala()
+    // a encoger TODO (números, videos, cámaras) para que quepa esa fila
+    // gigante, dejando el tablero diminuto.
     function ajustarAnchoPanelJuegos() {
       const panel = document.getElementById("panelJuegos");
       const grilla = document.getElementById("grillaBingo");
-      const cont = document.getElementById("contenedorPrincipal");
-      if (!panel || !grilla || !cont) return;
+      const contenido = document.getElementById("contenedorPrincipal");
+      if (!panel || !grilla) return;
 
-      if (cont.classList.contains("horizontal")) {
-        const anchoGrilla = grilla.getBoundingClientRect().width;
-        if (anchoGrilla > 0) {
-          panel.style.maxWidth = anchoGrilla + "px";
-          panel.style.marginLeft = "auto";
-          panel.style.marginRight = "auto";
-        }
-      } else {
-        panel.style.maxWidth = "";
-        panel.style.marginLeft = "";
-        panel.style.marginRight = "";
+      // Mide en tamaño "real" (sin la escala aplicada en la vuelta anterior),
+      // porque ajustarEscala() la vuelve a calcular justo después de esto.
+      const transformAnterior = contenido ? contenido.style.transform : "";
+      if (contenido) contenido.style.transform = "none";
+
+      const anchoGrilla = grilla.getBoundingClientRect().width;
+      if (anchoGrilla > 0) {
+        panel.style.maxWidth = anchoGrilla + "px";
+        panel.style.marginLeft = "auto";
+        panel.style.marginRight = "auto";
       }
+
+      if (contenido) contenido.style.transform = transformAnterior;
     }
 
     async function cargarJuegosPublico() {
