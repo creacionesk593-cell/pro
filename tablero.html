@@ -58,7 +58,8 @@
 
     #panelJuegos { margin-top: 20px; width: 100%; text-align: center; }
     #panelJuegos h4 { text-align:center; margin-bottom:10px; }
-    .juego-chip { display:inline-block; padding:6px 14px; margin:4px; border-radius:20px; font-size:inherit; background:#1e293b; }
+    #listaJuegosPublico { display:flex; flex-wrap:wrap; justify-content:center; gap:6px; }
+    .juego-chip { display:inline-block; padding:6px 14px; margin:0; border-radius:20px; font-size:inherit; background:#1e293b; }
     .juego-chip.no-disponible { background:#e74c3c; text-decoration:line-through; opacity:0.7; }
 
     #mensajeEspera { font-size: 32px; text-align: center; opacity: 0.8; }
@@ -92,21 +93,33 @@
   <!-- Botón pequeño de BINGO — solo visible si el organizador lo activó (tablero.boton_bingo_activo) -->
   <button id="btnBingo" onclick="abrirModalBingo()" title="Avisar que hiciste BINGO" style="display:none; position:fixed; bottom:14px; left:14px; padding:8px 14px; border-radius:20px; background:#e74c3c; color:white; border:none; font-size:0.8rem; font-weight:bold; cursor:pointer; z-index:9998; box-shadow:0 2px 8px rgba(0,0,0,0.4);">🏆 BINGO</button>
 
-  <div id="fondoModalBingo" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9999; align-items:center; justify-content:center;">
-    <div style="background:#1e293b; color:white; padding:22px; border-radius:12px; width:90%; max-width:380px; box-shadow:0 4px 20px rgba(0,0,0,0.5);">
-      <h3 style="margin:0 0 6px 0;">🏆 ¡Avisar BINGO!</h3>
-      <p style="font-size:0.8rem; color:#94a3b8; margin:0 0 14px 0;">Escribe tu nombre y la serie de tu(s) cartón(es) ganador(es). El organizador lo revisará.</p>
-      <label style="display:block; font-size:0.8rem; margin-bottom:4px;">Tu nombre:</label>
-      <input type="text" id="inputNombreBingo" placeholder="Ej: Ana Pérez" style="width:100%; padding:9px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:white; box-sizing:border-box; margin-bottom:12px;">
-      <label style="display:block; font-size:0.8rem; margin-bottom:4px;">Serie de tu(s) cartón(es):</label>
-      <textarea id="inputSerieBingo" placeholder="Ej: 4521 o 4521, 8890" rows="2" style="width:100%; padding:9px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:white; box-sizing:border-box; resize:vertical;"></textarea>
-      <div id="estadoEnvioBingo" style="font-size:0.8rem; margin-top:8px; min-height:18px;"></div>
-      <div style="display:flex; gap:10px; margin-top:14px;">
-        <button onclick="cerrarModalBingo()" style="flex:1; padding:10px; background:transparent; color:#94a3b8; border:1px solid #475569; border-radius:6px; cursor:pointer;">Cancelar</button>
-        <button onclick="enviarReclamoBingo()" style="flex:1; padding:10px; background:#e74c3c; color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">Enviar</button>
-      </div>
+  <!-- Panel tipo "chat" anclado junto al botón (NO ocupa el centro de la pantalla) -->
+  <div id="panelBingo" style="display:none; position:fixed; bottom:66px; left:14px; width:280px; max-width:85vw; background:#1e293b; color:white; border-radius:12px; box-shadow:0 4px 20px rgba(0,0,0,0.5); z-index:9999; overflow:hidden;">
+    <div style="background:#e74c3c; padding:10px 14px; display:flex; justify-content:space-between; align-items:center;">
+      <strong style="font-size:0.9rem;">🏆 ¡Avisar BINGO!</strong>
+      <span onclick="cerrarModalBingo()" style="cursor:pointer; font-size:1.1rem; line-height:1;">✕</span>
+    </div>
+    <div style="padding:14px;">
+      <p style="font-size:0.75rem; color:#94a3b8; margin:0 0 10px 0;">Escribe tu nombre y la serie de tu(s) cartón(es) ganador(es). El organizador lo revisará.</p>
+      <label style="display:block; font-size:0.75rem; margin-bottom:4px;">Tu nombre:</label>
+      <input type="text" id="inputNombreBingo" placeholder="Ej: Ana Pérez" style="width:100%; padding:8px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:white; box-sizing:border-box; margin-bottom:10px; font-size:0.85rem;">
+      <label style="display:block; font-size:0.75rem; margin-bottom:4px;">Serie de tu(s) cartón(es):</label>
+      <textarea id="inputSerieBingo" placeholder="Ej: 4521 o 4521, 8890" rows="2" style="width:100%; padding:8px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:white; box-sizing:border-box; resize:vertical; font-size:0.85rem;"></textarea>
+      <div id="estadoEnvioBingo" style="font-size:0.75rem; margin-top:6px; min-height:16px;"></div>
+      <button onclick="enviarReclamoBingo()" style="width:100%; margin-top:10px; padding:9px; background:#e74c3c; color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.85rem;">Enviar</button>
     </div>
   </div>
+
+  <!-- Animación de "¡GANASTE!" con confeti, se muestra solo al navegador que envió ese aviso -->
+  <div id="overlayGanador" style="display:none; position:fixed; inset:0; z-index:10000; align-items:center; justify-content:center; pointer-events:none;">
+    <div id="cajaGanador" style="pointer-events:auto; background:linear-gradient(135deg,#f1c40f,#e67e22); color:#1e293b; padding:30px 36px; border-radius:18px; text-align:center; box-shadow:0 8px 40px rgba(0,0,0,0.6); max-width:90vw;">
+      <div style="font-size:2.4rem; margin-bottom:6px;">🎉🏆🎉</div>
+      <div style="font-size:1.6rem; font-weight:bold;">¡GANASTE!</div>
+      <div id="serieGanadoraTexto" style="font-size:1rem; margin-top:8px;"></div>
+      <button onclick="cerrarOverlayGanador()" style="margin-top:16px; padding:8px 20px; border:none; border-radius:20px; background:#1e293b; color:white; font-weight:bold; cursor:pointer;">Cerrar</button>
+    </div>
+  </div>
+  <div id="capaConfeti" style="display:none; position:fixed; inset:0; z-index:9999; pointer-events:none; overflow:hidden;"></div>
 
   <div id="panelVolumen" style="display:none; position:fixed; bottom:70px; right:68px; background:#1e293b; padding:16px; border-radius:10px; width:220px; z-index:9998; box-shadow:0 4px 15px rgba(0,0,0,0.5); font-size:0.85rem; color:white;">
     <strong>🔊 Sonido Global</strong>
@@ -181,6 +194,19 @@
         })
         .subscribe();
 
+      // Si el organizador confirma un ganador y coincide con un aviso que YO
+      // envié (guardado en este navegador), me muestra la animación de fiesta.
+      _supabase.channel('bingo_ganadores_' + MI_TENANT_ID)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tablero_bingo_reclamos', filter: `tenant_id=eq.${MI_TENANT_ID}` }, (payload) => {
+          if (payload.new && payload.new.ganador === true && obtenerMisReclamosBingo().includes(payload.new.id)) {
+            mostrarAnimacionGanador(payload.new);
+          }
+        })
+        .subscribe();
+
+      // Por si el navegador se cerró/recargó justo cuando confirmaron el ganador
+      await revisarSiHayGanadorPendiente();
+
       window.addEventListener('resize', ajustarEscala);
       window.addEventListener('orientationchange', () => setTimeout(ajustarEscala, 200));
 
@@ -240,6 +266,29 @@
 
     let TAMANO_FUENTE_JUEGOS = 16;
 
+    // En modo horizontal, evita que el panel de premios se extienda más
+    // ancho que la cuadrícula de números — si no caben en una línea,
+    // el resto pasa a la línea de abajo (gracias a flex-wrap).
+    function ajustarAnchoPanelJuegos() {
+      const panel = document.getElementById("panelJuegos");
+      const grilla = document.getElementById("grillaBingo");
+      const cont = document.getElementById("contenedorPrincipal");
+      if (!panel || !grilla || !cont) return;
+
+      if (cont.classList.contains("horizontal")) {
+        const anchoGrilla = grilla.getBoundingClientRect().width;
+        if (anchoGrilla > 0) {
+          panel.style.maxWidth = anchoGrilla + "px";
+          panel.style.marginLeft = "auto";
+          panel.style.marginRight = "auto";
+        }
+      } else {
+        panel.style.maxWidth = "";
+        panel.style.marginLeft = "";
+        panel.style.marginRight = "";
+      }
+    }
+
     async function cargarJuegosPublico() {
       const { data } = await _supabase.from('tablero_juegos').select('*').eq('tenant_id', MI_TENANT_ID).order('orden', { ascending: true });
       const cont = document.getElementById("listaJuegosPublico");
@@ -247,6 +296,7 @@
       if (!data || data.length === 0) { cont.innerHTML = ""; } else {
         cont.innerHTML = data.map(j => `<span class="juego-chip ${j.disponible ? '' : 'no-disponible'}">${j.nombre}</span>`).join("");
       }
+      ajustarAnchoPanelJuegos();
       ajustarEscala();
     }
 
@@ -328,6 +378,7 @@
       const btnBingo = document.getElementById("btnBingo");
       if (btnBingo) btnBingo.style.display = tablero.boton_bingo_activo ? "block" : "none";
 
+      ajustarAnchoPanelJuegos();
       ajustarEscala();
     }
 
@@ -591,15 +642,26 @@
        para que el organizador lo revise en tablero-admin.html. No bloquea el
        botón: cualquiera puede volver a presionarlo (puede haber más de un
        ganador en la misma partida).
+       El panel se muestra anclado junto al botón (como un chat), no en el
+       centro de la pantalla.
        ========================================================================= */
     function abrirModalBingo() {
       document.getElementById("estadoEnvioBingo").innerText = "";
-      document.getElementById("fondoModalBingo").style.display = "flex";
+      document.getElementById("panelBingo").style.display = "block";
     }
 
     function cerrarModalBingo() {
-      document.getElementById("fondoModalBingo").style.display = "none";
+      document.getElementById("panelBingo").style.display = "none";
     }
+
+    // Cierra el panel si la persona toca fuera de él (pero no si toca el botón o el panel mismo)
+    document.addEventListener("click", (e) => {
+      const panel = document.getElementById("panelBingo");
+      const boton = document.getElementById("btnBingo");
+      if (!panel || panel.style.display === "none") return;
+      if (panel.contains(e.target) || (boton && boton.contains(e.target))) return;
+      cerrarModalBingo();
+    });
 
     async function enviarReclamoBingo() {
       const nombre = document.getElementById("inputNombreBingo").value.trim();
@@ -617,12 +679,13 @@
       estado.innerText = "Enviando...";
 
       try {
-        const { error } = await _supabase.from('tablero_bingo_reclamos').insert({
-          tenant_id: MI_TENANT_ID,
-          nombre: nombre || null,
-          serie: serie
-        });
+        const { data, error } = await _supabase.from('tablero_bingo_reclamos')
+          .insert({ tenant_id: MI_TENANT_ID, nombre: nombre || null, serie: serie })
+          .select()
+          .single();
         if (error) throw error;
+
+        guardarMiReclamoBingo(data.id); // para poder reconocer luego si ESTE aviso resultó ganador
 
         estado.style.color = "#2ecc71";
         estado.innerText = "✅ ¡Enviado! Espera la confirmación del organizador.";
@@ -633,6 +696,76 @@
         estado.innerText = "❌ No se pudo enviar: " + err.message;
       }
     }
+
+    /* =========================================================================
+       DETECCIÓN DE "SOY EL GANADOR" — guarda en este navegador (localStorage)
+       los IDs de los avisos que YO envié. Cuando el organizador confirma un
+       ganador (ganador = true), si el ID coincide con uno de los míos, me
+       muestra la animación de celebración. Solo YO la veo, nadie más.
+       ========================================================================= */
+    function claveMisReclamosBingo() { return 'tubingo_mis_reclamos_' + MI_TENANT_ID; }
+
+    function obtenerMisReclamosBingo() {
+      try { return JSON.parse(localStorage.getItem(claveMisReclamosBingo())) || []; }
+      catch (e) { return []; }
+    }
+
+    function guardarMiReclamoBingo(id) {
+      try {
+        const lista = obtenerMisReclamosBingo();
+        lista.push(id);
+        localStorage.setItem(claveMisReclamosBingo(), JSON.stringify(lista));
+      } catch (e) {}
+    }
+
+    async function revisarSiHayGanadorPendiente() {
+      const misIds = obtenerMisReclamosBingo();
+      if (misIds.length === 0) return;
+      try {
+        const { data } = await _supabase.from('tablero_bingo_reclamos')
+          .select('*').in('id', misIds).eq('ganador', true);
+        if (data && data.length > 0) mostrarAnimacionGanador(data[0]);
+      } catch (e) {}
+    }
+
+    function mostrarAnimacionGanador(reclamo) {
+      document.getElementById("serieGanadoraTexto").innerText = "Serie ganadora: " + (reclamo.serie_ganadora || reclamo.serie);
+      document.getElementById("overlayGanador").style.display = "flex";
+      lanzarConfeti();
+    }
+
+    function cerrarOverlayGanador() {
+      document.getElementById("overlayGanador").style.display = "none";
+      document.getElementById("capaConfeti").style.display = "none";
+      document.getElementById("capaConfeti").innerHTML = "";
+    }
+
+    function lanzarConfeti() {
+      const capa = document.getElementById("capaConfeti");
+      capa.style.display = "block";
+      capa.innerHTML = "";
+      const colores = ["#e74c3c", "#f1c40f", "#2ecc71", "#3498db", "#9b59b6", "#e67e22"];
+      const cantidad = 90;
+
+      for (let i = 0; i < cantidad; i++) {
+        const pieza = document.createElement("div");
+        const color = colores[Math.floor(Math.random() * colores.length)];
+        const izquierda = Math.random() * 100;
+        const duracion = 2.5 + Math.random() * 2;
+        const retraso = Math.random() * 1.2;
+        const tamano = 6 + Math.random() * 8;
+        pieza.style.cssText = `position:absolute; top:-20px; left:${izquierda}vw; width:${tamano}px; height:${tamano * 0.4}px; background:${color}; opacity:0.9; transform:rotate(${Math.random()*360}deg); animation: caerConfeti ${duracion}s linear ${retraso}s forwards;`;
+        capa.appendChild(pieza);
+      }
+
+      setTimeout(() => { capa.innerHTML = ""; }, 5000);
+    }
   </script>
+  <style>
+    @keyframes caerConfeti {
+      from { transform: translateY(0) rotate(0deg); }
+      to { transform: translateY(110vh) rotate(360deg); }
+    }
+  </style>
 </body>
 </html>
