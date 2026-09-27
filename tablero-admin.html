@@ -97,6 +97,22 @@
     </div>
 
     <div class="seccion">
+      <h3>🏆 Botón de BINGO para el público</h3>
+      <label style="display:flex; align-items:center; gap:8px; font-weight:bold; cursor:pointer;">
+        <input type="checkbox" id="chkBotonBingoActivo" style="width:auto;" onchange="guardarBotonBingoActivo()">
+        Mostrar un botón "🏆 BINGO" pequeño en la pantalla pública, para que los participantes avisen que ganaron
+      </label>
+      <p style="font-size:0.85rem; color:#7f8c8d; margin-top:8px;">
+        Al presionarlo, la persona escribe su nombre y la serie de su(s) cartón(es) ganador(es) — te llega aquí abajo
+        para que lo revises. No bloquea a nadie más: puede avisar más de una persona (por si hay varios ganadores).
+      </p>
+
+      <div id="listaAvisosBingo" style="margin-top:15px;">
+        <p style="color:#999; text-align:center;">Cargando avisos...</p>
+      </div>
+    </div>
+
+    <div class="seccion">
       <h3>🏆 Juegos / Figuras de esta partida (hasta 20)</h3>
       <p style="font-size:0.85rem; color:#7f8c8d;">Agrega cada juego (ej: "Juego A", "Locos", "Cometa") y márcalo como "Ya no disponible" cuando se termine, para que tus participantes lo vean reflejado al instante.</p>
       <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
@@ -173,7 +189,11 @@
 
       window.MI_TENANT_ID = acceso.perfil.tenant_id;
       const slug = acceso.tenant ? acceso.tenant.slug : '';
-      await llenarLinksDelTablero(slug);
+      const baseTablero = window.location.origin + window.location.pathname.replace('tablero-admin.html', 'tablero.html');
+      document.getElementById("linkPublico").value = baseTablero + '?tenant=' + encodeURIComponent(slug);
+
+      const basePreview = window.location.origin + window.location.pathname.replace('tablero-admin.html', 'tablero-preview.html');
+      document.getElementById("linkPrivado").value = basePreview + '?tenant=' + encodeURIComponent(slug);
 
       construirGridNumeros();
       construirSlotsCamaras();
@@ -184,7 +204,7 @@
         // Deja ver el enlace público y el historial, pero bloquea cualquier
         // acción que modifique el tablero (marcar números, reiniciar,
         // cámaras, subir/borrar galería).
-        bloquearPorSuscripcionVencida(["btnMarcarManual", "btnReiniciarPartida", "btnGuardarCamaras", "inputNumeroManual", "chkVisiblePublico"]);
+        bloquearPorSuscripcionVencida(["btnMarcarManual", "btnReiniciarPartida", "btnGuardarCamaras", "inputNumeroManual", "chkVisiblePublico", "chkBotonBingoActivo"]);
         ["seccionMarcarNumeros", "seccionCamaras"].forEach((id) => {
           const el = document.getElementById(id);
           if (el) {
@@ -200,6 +220,14 @@
           if (payload.new) { TABLERO_ACTUAL = payload.new; pintarEstado(); }
         })
         .subscribe();
+
+      _supabase.channel('bingo_reclamos_' + window.MI_TENANT_ID)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tablero_bingo_reclamos', filter: `tenant_id=eq.${window.MI_TENANT_ID}` }, () => {
+          cargarAvisosBingo();
+        })
+        .subscribe();
+
+      await cargarAvisosBingo();
 
       _supabase.channel('juegos_admin_' + window.MI_TENANT_ID)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'tablero_juegos', filter: `tenant_id=eq.${window.MI_TENANT_ID}` }, () => {
@@ -446,6 +474,7 @@
       }
 
       document.getElementById("chkVisiblePublico").checked = !!TABLERO_ACTUAL.visible_publico;
+      document.getElementById("chkBotonBingoActivo").checked = !!TABLERO_ACTUAL.boton_bingo_activo;
       document.getElementById("selLayout").value = TABLERO_ACTUAL.layout || 'horizontal';
       document.getElementById("selPosicionCamara").value = TABLERO_ACTUAL.posicion_camara || 'derecha';
       document.getElementById("selPlantilla").value = TABLERO_ACTUAL.plantilla || 'clasica';
@@ -586,6 +615,13 @@
       try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Cambiar visibilidad del tablero", p_detalle: visible ? "Mostrado al público" : "Ocultado" }); } catch(e) {}
     }
 
+    async function guardarBotonBingoActivo() {
+      const activo = document.getElementById("chkBotonBingoActivo").checked;
+      await _supabase.from('tablero_bingo').update({ boton_bingo_activo: activo }).eq('tenant_id', window.MI_TENANT_ID);
+      TABLERO_ACTUAL.boton_bingo_activo = activo;
+      try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Cambiar botón BINGO público", p_detalle: activo ? "Activado" : "Desactivado" }); } catch(e) {}
+    }
+
     async function guardarConfigTablero() {
       const layout = document.getElementById("selLayout").value;
       const posicion_camara = document.getElementById("selPosicionCamara").value;
@@ -623,32 +659,6 @@
       TABLERO_ACTUAL.camaras = camaras;
 
       try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Actualizar configuración del tablero", p_detalle: `Layout: ${layout}` }); } catch(e) {}
-    }
-
-    // Arma los links del Tablero (público y privado/preview) leyendo el
-    // dominio guardado en superadmin (tabla configuracion_global). Si no
-    // hay ninguno guardado, usa window.location.origin — el mismo
-    // comportamiento de siempre, sin romper nada.
-    async function llenarLinksDelTablero(slug) {
-      const rutaCarpeta = window.location.pathname.replace(/tablero-admin\.html$/, "");
-
-      let origen = window.location.origin;
-      try {
-        const { data, error } = await _supabase
-          .from('configuracion_global')
-          .select('dominio_base')
-          .eq('id', true)
-          .single();
-        if (!error && data?.dominio_base && data.dominio_base.trim() !== "") {
-          origen = data.dominio_base.trim().replace(/\/$/, ""); // sin "/" final
-        }
-      } catch (err) {
-        console.error("No se pudo leer el dominio global, se usa la URL actual:", err.message);
-      }
-
-      const base = origen + rutaCarpeta;
-      document.getElementById("linkPublico").value = base + 'tablero.html?tenant=' + encodeURIComponent(slug);
-      document.getElementById("linkPrivado").value = base + 'tablero-preview.html?tenant=' + encodeURIComponent(slug);
     }
 
     function copiarLink() {
@@ -734,6 +744,63 @@
       const { error } = await _supabase.from('tablero_juegos').delete().eq('id', id);
       if (error) { alert("❌ " + error.message); return; }
       await cargarJuegos();
+    }
+
+    /* =========================================================================
+       AVISOS DE BINGO recibidos desde la pantalla pública (tablero.html).
+       Cada aviso trae nombre + serie del cartón; se listan los "sin revisar"
+       primero, y se puede marcar como revisado o eliminar (descartar).
+       ========================================================================= */
+    async function cargarAvisosBingo() {
+      try {
+        const { data, error } = await _supabase
+          .from('tablero_bingo_reclamos')
+          .select('*')
+          .eq('tenant_id', window.MI_TENANT_ID)
+          .order('revisado', { ascending: true })
+          .order('creado_en', { ascending: false });
+        if (error) throw error;
+
+        const cont = document.getElementById("listaAvisosBingo");
+        if (!data || data.length === 0) {
+          cont.innerHTML = `<p style="color:#999; text-align:center;">Todavía no ha llegado ningún aviso de BINGO.</p>`;
+          return;
+        }
+
+        cont.innerHTML = data.map(r => {
+          const hora = new Date(r.creado_en).toLocaleString('es-EC', { dateStyle: 'short', timeStyle: 'short' });
+          const nombre = r.nombre ? r.nombre : '(sin nombre)';
+          const fondo = r.revisado ? '#f8f9fa' : '#fff9e6';
+          const borde = r.revisado ? '#ddd' : '#f1c40f';
+          return `
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; background:${fondo}; border:1px solid ${borde}; border-radius:8px; padding:12px; margin-bottom:8px;">
+              <div>
+                <strong>${nombre}</strong> ${r.revisado ? '' : '<span style="color:#f39c12; font-weight:bold;">🔔 Nuevo</span>'}<br>
+                <span style="font-size:0.9rem;">Serie: <strong>${r.serie}</strong></span><br>
+                <span style="font-size:0.75rem; color:#7f8c8d;">${hora}</span>
+              </div>
+              <div style="display:flex; gap:8px;">
+                ${!r.revisado ? `<button class="accion" style="margin:0; width:auto; background:#2ecc71; padding:8px 12px;" onclick="marcarAvisoBingoRevisado('${r.id}')">✔️ Revisado</button>` : ''}
+                <button class="accion" style="margin:0; width:auto; background:#e74c3c; padding:8px 12px;" onclick="eliminarAvisoBingo('${r.id}')">🗑️ Descartar</button>
+              </div>
+            </div>`;
+        }).join("");
+      } catch (err) {
+        console.error("Error cargando avisos de BINGO:", err.message);
+      }
+    }
+
+    async function marcarAvisoBingoRevisado(id) {
+      const { error } = await _supabase.from('tablero_bingo_reclamos').update({ revisado: true }).eq('id', id);
+      if (error) { alert("❌ " + error.message); return; }
+      await cargarAvisosBingo();
+    }
+
+    async function eliminarAvisoBingo(id) {
+      if (!confirm("¿Descartar este aviso de BINGO? Esta acción no se puede deshacer.")) return;
+      const { error } = await _supabase.from('tablero_bingo_reclamos').delete().eq('id', id);
+      if (error) { alert("❌ " + error.message); return; }
+      await cargarAvisosBingo();
     }
   </script>
 </body>
