@@ -102,6 +102,7 @@
         <input type="checkbox" id="chkBotonBingoActivo" style="width:auto;" onchange="guardarBotonBingoActivo()">
         Mostrar un botón "🏆 BINGO" pequeño en la pantalla pública, para que los participantes avisen que ganaron
       </label>
+      <p id="estadoGuardadoBotonBingo" style="font-size:0.8rem; margin-top:6px; min-height:18px;"></p>
       <p style="font-size:0.85rem; color:#7f8c8d; margin-top:8px;">
         Al presionarlo, la persona escribe su nombre y la serie de su(s) cartón(es) ganador(es) — te llega aquí abajo
         para que lo revises. No bloquea a nadie más: puede avisar más de una persona (por si hay varios ganadores).
@@ -505,6 +506,15 @@
 
       document.getElementById("chkVisiblePublico").checked = !!TABLERO_ACTUAL.visible_publico;
       document.getElementById("chkBotonBingoActivo").checked = !!TABLERO_ACTUAL.boton_bingo_activo;
+      { // Aviso si el valor cambió por tiempo real (ej. otra pestaña/dispositivo lo tocó)
+        const estado = document.getElementById("estadoGuardadoBotonBingo");
+        if (estado) {
+          estado.style.color = "#3498db";
+          estado.innerText = TABLERO_ACTUAL.boton_bingo_activo
+            ? "🔄 Actualizado en vivo — el botón está ACTIVO en este momento."
+            : "🔄 Actualizado en vivo — el botón está APAGADO en este momento (revisa si otra pestaña/dispositivo lo cambió).";
+        }
+      }
       document.getElementById("selLayout").value = TABLERO_ACTUAL.layout || 'horizontal';
       document.getElementById("selPosicionCamara").value = TABLERO_ACTUAL.posicion_camara || 'derecha';
       document.getElementById("selPlantilla").value = TABLERO_ACTUAL.plantilla || 'clasica';
@@ -647,8 +657,28 @@
 
     async function guardarBotonBingoActivo() {
       const activo = document.getElementById("chkBotonBingoActivo").checked;
-      await _supabase.from('tablero_bingo').update({ boton_bingo_activo: activo }).eq('tenant_id', window.MI_TENANT_ID);
-      TABLERO_ACTUAL.boton_bingo_activo = activo;
+      const estado = document.getElementById("estadoGuardadoBotonBingo");
+      estado.style.color = "#7f8c8d";
+      estado.innerText = "Guardando...";
+
+      const { error } = await _supabase.from('tablero_bingo').update({ boton_bingo_activo: activo }).eq('tenant_id', window.MI_TENANT_ID);
+      if (error) {
+        estado.style.color = "#e74c3c";
+        estado.innerText = "❌ No se guardó: " + error.message;
+        return;
+      }
+
+      // Vuelve a leer el valor REAL desde la base de datos (no solo asumir que
+      // se guardó) — así, si otra pestaña/dispositivo lo cambia justo después,
+      // al menos queda claro que EN ESTE MOMENTO sí se guardó correctamente.
+      const { data } = await _supabase.from('tablero_bingo').select('boton_bingo_activo').eq('tenant_id', window.MI_TENANT_ID).maybeSingle();
+      TABLERO_ACTUAL.boton_bingo_activo = data ? data.boton_bingo_activo : activo;
+
+      estado.style.color = "#2ecc71";
+      estado.innerText = TABLERO_ACTUAL.boton_bingo_activo
+        ? "✅ Guardado — el botón está ACTIVO en este momento para el público."
+        : "✅ Guardado — el botón está APAGADO en este momento para el público.";
+
       try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Cambiar botón BINGO público", p_detalle: activo ? "Activado" : "Desactivado" }); } catch(e) {}
     }
 
