@@ -89,6 +89,25 @@
 
   <button id="btnAltavoz" onclick="toggleControlVolumen()" style="display:none; position:fixed; bottom:14px; right:68px; width:46px; height:46px; border-radius:50%; background:#2c3e50; color:white; border:none; font-size:1.3rem; cursor:pointer; z-index:9998; box-shadow:0 2px 8px rgba(0,0,0,0.4);">🔊</button>
 
+  <!-- Botón pequeño de BINGO — solo visible si el organizador lo activó (tablero.boton_bingo_activo) -->
+  <button id="btnBingo" onclick="abrirModalBingo()" title="Avisar que hiciste BINGO" style="display:none; position:fixed; bottom:14px; left:14px; padding:8px 14px; border-radius:20px; background:#e74c3c; color:white; border:none; font-size:0.8rem; font-weight:bold; cursor:pointer; z-index:9998; box-shadow:0 2px 8px rgba(0,0,0,0.4);">🏆 BINGO</button>
+
+  <div id="fondoModalBingo" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9999; align-items:center; justify-content:center;">
+    <div style="background:#1e293b; color:white; padding:22px; border-radius:12px; width:90%; max-width:380px; box-shadow:0 4px 20px rgba(0,0,0,0.5);">
+      <h3 style="margin:0 0 6px 0;">🏆 ¡Avisar BINGO!</h3>
+      <p style="font-size:0.8rem; color:#94a3b8; margin:0 0 14px 0;">Escribe tu nombre y la serie de tu(s) cartón(es) ganador(es). El organizador lo revisará.</p>
+      <label style="display:block; font-size:0.8rem; margin-bottom:4px;">Tu nombre:</label>
+      <input type="text" id="inputNombreBingo" placeholder="Ej: Ana Pérez" style="width:100%; padding:9px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:white; box-sizing:border-box; margin-bottom:12px;">
+      <label style="display:block; font-size:0.8rem; margin-bottom:4px;">Serie de tu(s) cartón(es):</label>
+      <textarea id="inputSerieBingo" placeholder="Ej: 4521 o 4521, 8890" rows="2" style="width:100%; padding:9px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:white; box-sizing:border-box; resize:vertical;"></textarea>
+      <div id="estadoEnvioBingo" style="font-size:0.8rem; margin-top:8px; min-height:18px;"></div>
+      <div style="display:flex; gap:10px; margin-top:14px;">
+        <button onclick="cerrarModalBingo()" style="flex:1; padding:10px; background:transparent; color:#94a3b8; border:1px solid #475569; border-radius:6px; cursor:pointer;">Cancelar</button>
+        <button onclick="enviarReclamoBingo()" style="flex:1; padding:10px; background:#e74c3c; color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">Enviar</button>
+      </div>
+    </div>
+  </div>
+
   <div id="panelVolumen" style="display:none; position:fixed; bottom:70px; right:68px; background:#1e293b; padding:16px; border-radius:10px; width:220px; z-index:9998; box-shadow:0 4px 15px rgba(0,0,0,0.5); font-size:0.85rem; color:white;">
     <strong>🔊 Sonido Global</strong>
     <label style="display:flex; align-items:center; gap:8px; margin-top:10px; cursor:pointer;">
@@ -305,6 +324,9 @@
 
       aplicarLayout(tablero.layout || 'horizontal', tablero.posicion_camara || 'derecha', tablero.plantilla || 'clasica', ajustesLocales);
       montarCamaras(tablero.camaras || []);
+
+      const btnBingo = document.getElementById("btnBingo");
+      if (btnBingo) btnBingo.style.display = tablero.boton_bingo_activo ? "block" : "none";
 
       ajustarEscala();
     }
@@ -560,6 +582,55 @@
       if (iframe.dataset.urlActual !== urlFinal) {
         iframe.src = urlFinal;
         iframe.dataset.urlActual = urlFinal;
+      }
+    }
+
+    /* =========================================================================
+       BOTÓN DE "BINGO" — el espectador avisa que ganó, escribiendo su nombre
+       y la serie de su(s) cartón(es). Se guarda en tablero_bingo_reclamos
+       para que el organizador lo revise en tablero-admin.html. No bloquea el
+       botón: cualquiera puede volver a presionarlo (puede haber más de un
+       ganador en la misma partida).
+       ========================================================================= */
+    function abrirModalBingo() {
+      document.getElementById("estadoEnvioBingo").innerText = "";
+      document.getElementById("fondoModalBingo").style.display = "flex";
+    }
+
+    function cerrarModalBingo() {
+      document.getElementById("fondoModalBingo").style.display = "none";
+    }
+
+    async function enviarReclamoBingo() {
+      const nombre = document.getElementById("inputNombreBingo").value.trim();
+      const serie = document.getElementById("inputSerieBingo").value.trim();
+      const estado = document.getElementById("estadoEnvioBingo");
+
+      if (!serie) {
+        estado.style.color = "#e74c3c";
+        estado.innerText = "⚠️ Escribe la serie de tu cartón.";
+        return;
+      }
+      if (!MI_TENANT_ID) return;
+
+      estado.style.color = "#94a3b8";
+      estado.innerText = "Enviando...";
+
+      try {
+        const { error } = await _supabase.from('tablero_bingo_reclamos').insert({
+          tenant_id: MI_TENANT_ID,
+          nombre: nombre || null,
+          serie: serie
+        });
+        if (error) throw error;
+
+        estado.style.color = "#2ecc71";
+        estado.innerText = "✅ ¡Enviado! Espera la confirmación del organizador.";
+        document.getElementById("inputSerieBingo").value = "";
+        setTimeout(cerrarModalBingo, 1800);
+      } catch (err) {
+        estado.style.color = "#e74c3c";
+        estado.innerText = "❌ No se pudo enviar: " + err.message;
       }
     }
   </script>
