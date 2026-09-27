@@ -904,9 +904,6 @@
       if (error) { alert("❌ " + error.message); return; }
       await cargarAvisosBingo();
     }
-      if (error) { alert("❌ " + error.message); return; }
-      await cargarAvisosBingo();
-    }
 
     async function eliminarAvisoBingo(id) {
       if (!confirm("¿Descartar este aviso de BINGO? Esta acción no se puede deshacer.")) return;
