@@ -108,7 +108,12 @@
         para que lo revises. No bloquea a nadie más: puede avisar más de una persona (por si hay varios ganadores).
       </p>
 
-      <div id="listaAvisosBingo" style="margin-top:15px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-top:15px;">
+        <strong>Avisos recibidos</strong>
+        <button class="accion" style="margin:0; width:auto; background:#c0392b; padding:8px 14px; font-size:0.85rem;" onclick="borrarTodosLosAvisosBingo()">🗑️ Borrar todos los avisos</button>
+      </div>
+
+      <div id="listaAvisosBingo" style="margin-top:10px;">
         <p style="color:#999; text-align:center;">Cargando avisos...</p>
       </div>
     </div>
@@ -744,6 +749,10 @@
       alert("✅ Partida reiniciada. Puedes empezar a marcar números del juego nuevo.");
 
       try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Reiniciar partida del tablero", p_detalle: "Se vaciaron todos los números marcados" }); } catch(e) {}
+
+      if (confirm("¿También quieres borrar todos los avisos de BINGO recibidos en el juego anterior (ganadores y no ganadores)?")) {
+        await borrarTodosLosAvisosBingo(false);
+      }
     }
 
     /* =========================================================================
@@ -834,6 +843,14 @@
        Cada aviso trae nombre + serie del cartón; se listan los "sin revisar"
        primero, y se puede marcar como revisado o eliminar (descartar).
        ========================================================================= */
+    // Los avisos los escribe cualquier visitante (sin login), así que TODO texto
+    // que venga de ellos se escapa antes de mostrarlo en el panel del admin.
+    function escaparHtml(texto) {
+      return String(texto ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
     async function cargarAvisosBingo() {
       try {
         const { data, error } = await _supabase
@@ -852,15 +869,15 @@
 
         cont.innerHTML = data.map(r => {
           const hora = new Date(r.creado_en).toLocaleString('es-EC', { dateStyle: 'short', timeStyle: 'short' });
-          const nombre = r.nombre ? r.nombre : '(sin nombre)';
-          const series = r.serie.split(',').map(s => s.trim()).filter(Boolean);
+          const nombre = r.nombre ? escaparHtml(r.nombre) : '(sin nombre)';
+          const series = String(r.serie || '').split(',').map(s => s.trim()).filter(Boolean);
 
           let fondo = '#fff9e6', borde = '#f1c40f', estadoHtml = '';
 
           if (r.revisado) {
             if (r.ganador === true) {
               fondo = '#eafaf1'; borde = '#2ecc71';
-              estadoHtml = `<div style="margin-top:6px;">🏆 <strong>Ganador confirmado</strong> — serie: <strong>${r.serie_ganadora || r.serie}</strong></div>`;
+              estadoHtml = `<div style="margin-top:6px;">🏆 <strong>Ganador confirmado</strong> — serie: <strong>${escaparHtml(r.serie_ganadora || r.serie)}</strong></div>`;
             } else {
               fondo = '#f8f9fa'; borde = '#ddd';
               estadoHtml = `<div style="margin-top:6px; color:#7f8c8d;">Revisado — no fue ganador</div>`;
@@ -870,7 +887,7 @@
           // Mientras esté pendiente: casillas para elegir cuál(es) serie(s) ganaron
           const bloqueSeleccion = !r.revisado ? `
             <div class="series-check" style="margin-top:8px; font-size:0.85rem;">
-              ${series.map(s => `<label style="display:block; padding:2px 0;"><input type="checkbox" class="chk-serie" value="${s}"> Serie <strong>${s}</strong></label>`).join("")}
+              ${series.map(s => `<label style="display:block; padding:2px 0;"><input type="checkbox" class="chk-serie" value="${escaparHtml(s)}"> Serie <strong>${escaparHtml(s)}</strong></label>`).join("")}
             </div>` : '';
 
           const botones = !r.revisado ? `
@@ -879,12 +896,12 @@
               <button class="accion" style="margin:0; width:auto; background:#3498db; padding:8px 12px;" onclick="reabrirAvisoBingo('${r.id}')">↩️ Reabrir</button>`;
 
           return `
-            <div class="fila-reclamo" data-id="${r.id}" style="background:${fondo}; border:1px solid ${borde}; border-radius:8px; padding:12px; margin-bottom:8px;">
+            <div class="fila-reclamo" data-id="${r.id}" data-juego-id="${r.juego_id || ''}" style="background:${fondo}; border:1px solid ${borde}; border-radius:8px; padding:12px; margin-bottom:8px;">
               <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
                 <div>
                   <strong>${nombre}</strong> ${!r.revisado ? '<span style="color:#f39c12; font-weight:bold;">🔔 Nuevo</span>' : ''}<br>
-                  ${r.juego_nombre ? `<span style="font-size:0.9rem;">🏆 Premio: <strong>${r.juego_nombre}</strong></span><br>` : `<span style="font-size:0.85rem; color:#7f8c8d;">Premio no especificado</span><br>`}
-                  <span style="font-size:0.9rem;">Serie(s) enviada(s): <strong>${r.serie}</strong></span><br>
+                  ${r.juego_nombre ? `<span style="font-size:0.9rem;">🏆 Premio: <strong>${escaparHtml(r.juego_nombre)}</strong></span><br>` : `<span style="font-size:0.85rem; color:#7f8c8d;">Premio no especificado</span><br>`}
+                  <span style="font-size:0.9rem;">Serie(s) enviada(s): <strong>${escaparHtml(r.serie)}</strong></span><br>
                   <span style="font-size:0.75rem; color:#7f8c8d;">${hora}</span>
                   ${estadoHtml}
                 </div>
@@ -901,7 +918,7 @@
         const cont = document.getElementById("listaAvisosBingo");
         if (cont) {
           cont.innerHTML = `<p style="color:#e74c3c; text-align:center; font-size:0.85rem;">
-            ❌ No se pudieron cargar los avisos: ${err.message}<br>
+            ❌ No se pudieron cargar los avisos: ${escaparHtml(err.message)}<br>
             <span style="color:#7f8c8d;">Revisa que hayas corrido <code>sql_boton_bingo.sql</code> y <code>sql_boton_bingo_v2.sql</code> completos en Supabase (SQL Editor), sin errores.</span>
           </p>`;
         }
@@ -921,6 +938,23 @@
         .eq('id', id);
       if (error) { alert("❌ " + error.message); return; }
       try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Confirmar ganador de BINGO", p_detalle: `Serie: ${serieGanadora}` }); } catch(e) {}
+
+      // Si el aviso trae un premio, ofrece marcarlo como "ya no disponible".
+      // Se pregunta (no es automático) porque un mismo premio puede tener
+      // varios ganadores: si todavía esperas más, elige "Cancelar".
+      const juegoId = fila.dataset.juegoId;
+      if (juegoId) {
+        const { data: juego } = await _supabase.from('tablero_juegos')
+          .select('nombre, disponible').eq('id', juegoId).eq('tenant_id', window.MI_TENANT_ID).maybeSingle();
+        if (juego && juego.disponible &&
+            confirm(`✅ Ganador confirmado.\n\n¿Marcar el premio "${juego.nombre}" como YA NO DISPONIBLE?\n\n(Elige "Cancelar" si todavía puede haber más ganadores de este mismo premio.)`)) {
+          const { error: errorJuego } = await _supabase.from('tablero_juegos')
+            .update({ disponible: false }).eq('id', juegoId).eq('tenant_id', window.MI_TENANT_ID);
+          if (errorJuego) alert("❌ No se pudo actualizar el premio: " + errorJuego.message);
+          await cargarJuegos();
+        }
+      }
+
       await cargarAvisosBingo();
     }
 
@@ -940,6 +974,17 @@
       if (!confirm("¿Descartar este aviso de BINGO? Esta acción no se puede deshacer.")) return;
       const { error } = await _supabase.from('tablero_bingo_reclamos').delete().eq('id', id);
       if (error) { alert("❌ " + error.message); return; }
+      await cargarAvisosBingo();
+    }
+
+    // Borra TODOS los avisos del tenant (ganadores y no ganadores). Útil al
+    // terminar un juego y empezar otro. Con pedirConfirmacion=false se usa
+    // desde "Reiniciar partida", que ya hizo su propia pregunta.
+    async function borrarTodosLosAvisosBingo(pedirConfirmacion = true) {
+      if (pedirConfirmacion && !confirm("¿Borrar TODOS los avisos de BINGO recibidos (ganadores y no ganadores)? Esta acción no se puede deshacer.")) return;
+      const { error } = await _supabase.from('tablero_bingo_reclamos').delete().eq('tenant_id', window.MI_TENANT_ID);
+      if (error) { alert("❌ " + error.message); return; }
+      try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Borrar avisos de BINGO", p_detalle: "Se borraron todos los avisos recibidos" }); } catch(e) {}
       await cargarAvisosBingo();
     }
   </script>
