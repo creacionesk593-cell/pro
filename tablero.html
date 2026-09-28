@@ -754,7 +754,14 @@
       estado.innerText = "Enviando...";
 
       try {
+        // El ID se genera aquí mismo (en vez de pedirle a la base de datos que
+        // devuelva la fila insertada con .select()). Pedir la fila de vuelta
+        // obliga a Postgres a revisar también la política de LECTURA, y un
+        // visitante anónimo (celular, otro navegador) no puede leer avisos
+        // pendientes — por eso antes solo funcionaba desde el navegador donde
+        // el admin tenía sesión abierta.
         const filasParaInsertar = registros.map(r => ({
+          id: generarIdAviso(),
           tenant_id: MI_TENANT_ID,
           nombre: nombre || null,
           serie: r.serie,
@@ -762,14 +769,12 @@
           juego_nombre: r.juegoNombre
         }));
 
-        const { data, error } = await _supabase.from('tablero_bingo_reclamos')
-          .insert(filasParaInsertar)
-          .select();
+        const { error } = await _supabase.from('tablero_bingo_reclamos').insert(filasParaInsertar);
         if (error) throw error;
 
         // Guarda el ID de CADA cartón enviado — así, si el organizador confirma
         // cualquiera de ellos como ganador, se reconoce y muestra la animación.
-        (data || []).forEach(fila => guardarMiReclamoBingo(fila.id));
+        filasParaInsertar.forEach(fila => guardarMiReclamoBingo(fila.id));
 
         estado.style.color = "#2ecc71";
         estado.innerText = `✅ ¡Enviado${registros.length > 1 ? 's ' + registros.length + ' cartones' : ''}! Espera la confirmación del organizador.`;
@@ -794,6 +799,17 @@
        muestra la animación de celebración. Solo YO la veo, nadie más.
        ========================================================================= */
     function claveMisReclamosBingo() { return 'tubingo_mis_reclamos_' + MI_TENANT_ID; }
+    function claveCelebradosBingo() { return 'tubingo_celebrados_' + MI_TENANT_ID; }
+
+    // Genera el ID del aviso en el navegador. crypto.randomUUID() existe en
+    // páginas https (como GitHub Pages); el plan B cubre navegadores viejos.
+    function generarIdAviso() {
+      if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+      });
+    }
 
     function obtenerMisReclamosBingo() {
       try { return JSON.parse(localStorage.getItem(claveMisReclamosBingo())) || []; }
@@ -808,18 +824,40 @@
       } catch (e) {}
     }
 
+    function obtenerCelebradosBingo() {
+      try { return JSON.parse(localStorage.getItem(claveCelebradosBingo())) || []; }
+      catch (e) { return []; }
+    }
+
+    function marcarCelebradoBingo(id) {
+      try {
+        const lista = obtenerCelebradosBingo();
+        if (!lista.includes(id)) lista.push(id);
+        localStorage.setItem(claveCelebradosBingo(), JSON.stringify(lista));
+      } catch (e) {}
+    }
+
+    // Al abrir/recargar la página: solo celebra ganadores que esta persona
+    // todavía NO había visto celebrar (si no, la fiesta saldría en cada recarga).
     async function revisarSiHayGanadorPendiente() {
       const misIds = obtenerMisReclamosBingo();
       if (misIds.length === 0) return;
       try {
         const { data } = await _supabase.from('tablero_bingo_reclamos')
           .select('*').in('id', misIds).eq('ganador', true);
-        if (data && data.length > 0) mostrarAnimacionGanador(data[0]);
+        const yaVistos = obtenerCelebradosBingo();
+        const nuevos = (data || []).filter(r => !yaVistos.includes(r.id));
+        if (nuevos.length > 0) {
+          mostrarAnimacionGanador(nuevos[0]);
+          nuevos.forEach(r => marcarCelebradoBingo(r.id));
+        }
       } catch (e) {}
     }
 
     function mostrarAnimacionGanador(reclamo) {
-      document.getElementById("serieGanadoraTexto").innerText = "Serie ganadora: " + (reclamo.serie_ganadora || reclamo.serie);
+      marcarCelebradoBingo(reclamo.id);
+      const premio = reclamo.juego_nombre ? "Premio: " + reclamo.juego_nombre + " · " : "";
+      document.getElementById("serieGanadoraTexto").innerText = premio + "Serie ganadora: " + (reclamo.serie_ganadora || reclamo.serie);
       document.getElementById("overlayGanador").style.display = "flex";
       lanzarConfeti();
     }
