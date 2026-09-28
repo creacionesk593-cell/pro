@@ -355,6 +355,15 @@
       document.getElementById("mensajeEspera").style.display = visible ? "none" : "block";
       document.getElementById("contenidoTablero").style.display = visible ? "block" : "none";
       document.getElementById("zonaCamaras").style.display = visible ? "flex" : "none";
+
+      // El botón BINGO solo existe mientras el tablero está visible Y el
+      // organizador lo activó. Se decide ANTES del return de abajo: si no,
+      // al ocultar el tablero el botón se quedaba en pantalla.
+      const btnBingo = document.getElementById("btnBingo");
+      const bingoPermitido = visible && !!tablero.boton_bingo_activo;
+      if (btnBingo) btnBingo.style.display = bingoPermitido ? "block" : "none";
+      if (!bingoPermitido) cerrarModalBingo();
+
       if (!visible) { ajustarEscala(); return; }
 
       const ajustesLocales = obtenerAjustesLocales();
@@ -400,9 +409,6 @@
 
       aplicarLayout(tablero.layout || 'horizontal', tablero.posicion_camara || 'derecha', tablero.plantilla || 'clasica', ajustesLocales);
       montarCamaras(tablero.camaras || []);
-
-      const btnBingo = document.getElementById("btnBingo");
-      if (btnBingo) btnBingo.style.display = tablero.boton_bingo_activo ? "block" : "none";
 
       ajustarAnchoPanelJuegos();
       ajustarEscala();
@@ -785,7 +791,7 @@
         // el organizador tiene el botón de BINGO desactivado — no es una
         // falla del sistema, es la condición que activa/desactiva el envío.
         if (err.message && err.message.includes("row-level security")) {
-          estado.innerText = "⚠️ El organizador no tiene activado el aviso de BINGO en este momento. Avísale directamente.";
+          estado.innerText = "⚠️ El aviso de BINGO no está disponible en este momento. Avísale directamente al organizador.";
         } else {
           estado.innerText = "❌ No se pudo enviar: " + err.message;
         }
