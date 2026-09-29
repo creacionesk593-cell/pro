@@ -63,6 +63,11 @@
     .juego-chip.no-disponible { background:#e74c3c; text-decoration:line-through; opacity:0.7; }
 
     #mensajeEspera { font-size: 32px; text-align: center; opacity: 0.8; }
+
+    /* Publicidad mientras el tablero está oculto ("Esperando inicio del juego") */
+    #publicidadEspera { display: none; width: 720px; height: 405px; margin-top: 24px; background: #0b1220; border-radius: 14px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.5); }
+    #publicidadEspera img, #publicidadEspera video { width: 100%; height: 100%; object-fit: contain; animation: aparecerSuave 0.8s ease; }
+    @keyframes aparecerSuave { from { opacity: 0; } to { opacity: 1; } }
   </style>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="conexion.js"></script>
@@ -73,6 +78,7 @@
       <div id="zonaTablero">
         <div id="badgeEnVivo" style="display:none; margin-bottom:10px; align-self:center; background:rgba(30,41,59,0.85); color:white; padding:5px 14px; border-radius:20px; font-size:0.8rem; font-weight:bold; box-shadow:0 2px 8px rgba(0,0,0,0.4);">🔴 EN VIVO — 1</div>
         <div id="mensajeEspera" style="display:none;">⏳ Esperando inicio del juego...</div>
+        <div id="publicidadEspera"></div>
         <div id="contenidoTablero" style="display:none;">
           <div id="areaTablero">
             <div id="numeroActual">--</div>
@@ -89,6 +95,9 @@
   <button id="btnAjustesVista" onclick="toggleAjustesVista()" title="Ajustar cómo se ve en tu pantalla" style="position:fixed; bottom:14px; right:14px; width:46px; height:46px; border-radius:50%; background:#2c3e50; color:white; border:none; font-size:1.3rem; cursor:pointer; z-index:9998; box-shadow:0 2px 8px rgba(0,0,0,0.4);">⚙️</button>
 
   <button id="btnAltavoz" onclick="toggleControlVolumen()" style="display:none; position:fixed; bottom:14px; right:68px; width:46px; height:46px; border-radius:50%; background:#2c3e50; color:white; border:none; font-size:1.3rem; cursor:pointer; z-index:9998; box-shadow:0 2px 8px rgba(0,0,0,0.4);">🔊</button>
+
+  <!-- Música suave de espera: solo se muestra mientras el tablero está oculto -->
+  <button id="btnMusicaEspera" onclick="alternarMusicaEspera()" title="Activar la música de espera" style="display:none; position:fixed; bottom:14px; right:122px; width:46px; height:46px; border-radius:50%; background:#2c3e50; color:white; border:none; font-size:1.3rem; cursor:pointer; z-index:9998; box-shadow:0 2px 8px rgba(0,0,0,0.4);">🔇</button>
 
   <!-- Botón pequeño de BINGO — solo visible si el organizador lo activó (tablero.boton_bingo_activo) -->
   <button id="btnBingo" onclick="abrirModalBingo()" title="Avisar que hiciste BINGO" style="display:none; position:fixed; bottom:14px; left:14px; padding:8px 14px; border-radius:20px; background:#e74c3c; color:white; border:none; font-size:0.8rem; font-weight:bold; cursor:pointer; z-index:9998; box-shadow:0 2px 8px rgba(0,0,0,0.4);">🏆 BINGO</button>
@@ -247,6 +256,8 @@
     function mostrarMensajeEspera(texto) {
       document.getElementById("mensajeEspera").style.display = "block";
       document.getElementById("mensajeEspera").innerText = texto;
+      detenerPublicidadEspera();
+      prepararMusicaEspera(false);
       ajustarEscala();
     }
 
@@ -364,7 +375,16 @@
       if (btnBingo) btnBingo.style.display = bingoPermitido ? "block" : "none";
       if (!bingoPermitido) cerrarModalBingo();
 
-      if (!visible) { ajustarEscala(); return; }
+      // Con el tablero oculto ("Esperando inicio del juego"): publicidad + música suave.
+      // Con el tablero visible: se apagan las dos.
+      if (!visible) {
+        montarPublicidadEspera(tablero.camaras || []);
+        prepararMusicaEspera(true);
+        ajustarEscala();
+        return;
+      }
+      detenerPublicidadEspera();
+      prepararMusicaEspera(false);
 
       const ajustesLocales = obtenerAjustesLocales();
 
@@ -462,6 +482,230 @@
       document.getElementById("panelAjustesVista").style.display = "none";
       if (ULTIMO_TABLERO_RECIBIDO) pintarTablero(ULTIMO_TABLERO_RECIBIDO);
     }
+
+    /* =========================================================================
+       PANTALLA DE ESPERA ("Esperando inicio del juego"): mientras el tablero
+       está oculto se muestran las imágenes/videos de las galerías que ya
+       subiste en las cámaras (sirven como publicidad) y suena una música
+       suave y relajante. Todo se apaga solo cuando muestras el tablero.
+       ========================================================================= */
+    let ITEMS_ESPERA = [];          // { url, es_video, ms }
+    let firmaEspera = "";
+    let camarasEspera = [];
+    let temporizadorRotacionEspera = null;
+    let temporizadorRecargaEspera = null;
+
+    // Lee las imágenes de TODAS las galerías activas (misma tabla y mismo
+    // número de casilla con el que las sube el admin).
+    async function cargarItemsEspera() {
+      const casillas = [];
+      camarasEspera.slice(0, 3).forEach((c, idx) => {
+        if (c && c.activa && c.tipo === "galeria_nube") casillas.push({ idx, ms: (c.duracionSegundos || 5) * 1000 });
+      });
+      if (casillas.length === 0) { ITEMS_ESPERA = []; return; }
+
+      const { data, error } = await _supabase.from('tablero_galeria').select('*')
+        .eq('tenant_id', MI_TENANT_ID)
+        .in('camara_index', casillas.map(c => c.idx))
+        .order('camara_index', { ascending: true })
+        .order('orden', { ascending: true });
+      if (error || !data) return; // si falla, deja lo que ya se estaba mostrando
+
+      ITEMS_ESPERA = data.map(a => ({
+        url: a.url,
+        es_video: !!a.es_video,
+        ms: (casillas.find(c => c.idx === a.camara_index) || { ms: 5000 }).ms
+      }));
+    }
+
+    // Igual que las galerías de las cámaras: se elige la imagen según el reloj,
+    // así todos los que ven el enlace ven la misma imagen al mismo tiempo.
+    function pintarItemEspera() {
+      const cont = document.getElementById("publicidadEspera");
+      if (!cont || ITEMS_ESPERA.length === 0) return;
+
+      const total = ITEMS_ESPERA.reduce((s, it) => s + it.ms, 0);
+      let pos = Date.now() % total;
+      let item = ITEMS_ESPERA[0];
+      for (const it of ITEMS_ESPERA) { if (pos < it.ms) { item = it; break; } pos -= it.ms; }
+
+      if (cont.dataset.itemActual === item.url) return; // ya es la que se está mostrando
+      cont.dataset.itemActual = item.url;
+      cont.innerHTML = "";
+      if (item.es_video) {
+        const video = document.createElement("video");
+        video.src = item.url; video.autoplay = true; video.muted = true; video.loop = true; video.playsInline = true;
+        cont.appendChild(video);
+      } else {
+        const img = document.createElement("img");
+        img.src = item.url;
+        cont.appendChild(img);
+      }
+    }
+
+    async function montarPublicidadEspera(camaras) {
+      camarasEspera = camaras || [];
+      const cont = document.getElementById("publicidadEspera");
+      if (!cont) return;
+
+      // Solo recarga cuando cambia la configuración de galerías (esta función
+      // se llama con cada cambio del tablero, no hay que ir a la base cada vez).
+      const firma = JSON.stringify(camarasEspera.slice(0, 3).map(c => c ? [c.activa, c.tipo, c.duracionSegundos] : null));
+      if (firma === firmaEspera && temporizadorRotacionEspera) return;
+      firmaEspera = firma;
+
+      await cargarItemsEspera();
+      if (ITEMS_ESPERA.length === 0) { detenerPublicidadEspera(); return; }
+
+      cont.dataset.itemActual = "";
+      cont.style.display = "block";
+      pintarItemEspera();
+      ajustarEscala();
+
+      if (temporizadorRotacionEspera) clearInterval(temporizadorRotacionEspera);
+      temporizadorRotacionEspera = setInterval(pintarItemEspera, 1000);
+
+      // Por si subes imágenes nuevas mientras el tablero sigue oculto
+      if (temporizadorRecargaEspera) clearInterval(temporizadorRecargaEspera);
+      temporizadorRecargaEspera = setInterval(cargarItemsEspera, 120000);
+    }
+
+    function detenerPublicidadEspera() {
+      if (temporizadorRotacionEspera) { clearInterval(temporizadorRotacionEspera); temporizadorRotacionEspera = null; }
+      if (temporizadorRecargaEspera) { clearInterval(temporizadorRecargaEspera); temporizadorRecargaEspera = null; }
+      firmaEspera = "";
+      const cont = document.getElementById("publicidadEspera");
+      if (cont) { cont.style.display = "none"; cont.innerHTML = ""; cont.dataset.itemActual = ""; }
+    }
+
+    /* ---- Música suave de espera ----
+       Se genera con el propio navegador (Web Audio), sin archivos de audio:
+       cuatro notas largas con volumen que "respira" lento, un eco suave y
+       una progresión de acordes que cambia cada ~14 segundos.
+       Los navegadores no dejan sonar nada hasta que la persona toca la
+       pantalla al menos una vez; por eso empieza con el primer toque.
+       El botón 🎵 la apaga/enciende y el navegador recuerda esa elección. */
+    const CLAVE_MUSICA_ESPERA = 'tubingo_musica_espera'; // '0' = la persona la apagó
+    const ACORDES_ESPERA = [
+      [130.81, 196.00, 246.94, 329.63], // Do mayor 7
+      [110.00, 196.00, 261.63, 329.63], // La menor 7
+      [ 87.31, 220.00, 261.63, 329.63], // Fa mayor 7
+      [ 98.00, 196.00, 246.94, 293.66]  // Sol 6
+    ];
+    let musicaEspera = null;
+    let hayEsperaVisible = false;
+    let huboGestoUsuario = false;
+
+    function musicaEsperaPermitida() {
+      try { return localStorage.getItem(CLAVE_MUSICA_ESPERA) !== '0'; } catch (e) { return true; }
+    }
+    function guardarPermisoMusica(activa) {
+      try { localStorage.setItem(CLAVE_MUSICA_ESPERA, activa ? '1' : '0'); } catch (e) {}
+    }
+
+    function actualizarBotonMusica() {
+      const b = document.getElementById("btnMusicaEspera");
+      if (!b) return;
+      const sonando = !!musicaEspera;
+      b.style.display = hayEsperaVisible ? "block" : "none";
+      b.innerText = sonando ? "🎵" : "🔇";
+      b.style.background = sonando ? "#27ae60" : "#2c3e50";
+      b.title = sonando ? "Apagar la música de espera" : "Activar la música de espera";
+    }
+
+    function iniciarMusicaEspera() {
+      if (musicaEspera) return;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      try {
+        const ctx = new AC();
+        if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+
+        const master = ctx.createGain();
+        master.gain.value = 0;
+
+        const filtro = ctx.createBiquadFilter();   // quita todo lo agudo/áspero
+        filtro.type = 'lowpass'; filtro.frequency.value = 900; filtro.Q.value = 0.3;
+
+        const eco = ctx.createDelay(1.0);          // eco suave que da sensación de espacio
+        eco.delayTime.value = 0.45;
+        const realimentacion = ctx.createGain(); realimentacion.gain.value = 0.35;
+        const filtroEco = ctx.createBiquadFilter(); filtroEco.type = 'lowpass'; filtroEco.frequency.value = 700;
+
+        filtro.connect(master);
+        filtro.connect(eco); eco.connect(filtroEco);
+        filtroEco.connect(realimentacion); realimentacion.connect(eco);
+        filtroEco.connect(master);
+        master.connect(ctx.destination);
+
+        const voces = ACORDES_ESPERA[0].map((frecuencia, i) => {
+          const osc = ctx.createOscillator();
+          osc.type = i === 0 ? 'triangle' : 'sine';
+          osc.frequency.value = frecuencia;
+          osc.detune.value = (i - 1.5) * 4;        // leve desafinación = sonido más cálido
+
+          const g = ctx.createGain(); g.gain.value = 0.22;
+          const lfo = ctx.createOscillator(); lfo.frequency.value = 0.05 + i * 0.017;
+          const profundidad = ctx.createGain(); profundidad.gain.value = 0.10;
+          lfo.connect(profundidad); profundidad.connect(g.gain);   // el volumen "respira" lento
+
+          osc.connect(g); g.connect(filtro);
+          osc.start(); lfo.start();
+          return { osc, lfo };
+        });
+
+        let indiceAcorde = 0;
+        const timer = setInterval(() => {
+          indiceAcorde = (indiceAcorde + 1) % ACORDES_ESPERA.length;
+          voces.forEach((v, i) => v.osc.frequency.setTargetAtTime(ACORDES_ESPERA[indiceAcorde][i], ctx.currentTime, 2.5));
+        }, 14000);
+
+        master.gain.setTargetAtTime(0.10, ctx.currentTime, 1.5); // entra poco a poco, volumen bajo
+        musicaEspera = { ctx, master, voces, timer };
+      } catch (e) {
+        musicaEspera = null;
+      }
+      actualizarBotonMusica();
+    }
+
+    function detenerMusicaEspera() {
+      if (!musicaEspera) { actualizarBotonMusica(); return; }
+      const m = musicaEspera;
+      musicaEspera = null;
+      clearInterval(m.timer);
+      try { m.master.gain.setTargetAtTime(0, m.ctx.currentTime, 0.4); } catch (e) {}
+      setTimeout(() => {
+        try { m.voces.forEach(v => { v.osc.stop(); v.lfo.stop(); }); m.ctx.close(); } catch (e) {}
+      }, 2000);
+      actualizarBotonMusica();
+    }
+
+    // Llamada desde pintarTablero: true = tablero oculto (espera), false = tablero visible
+    function prepararMusicaEspera(enEspera) {
+      hayEsperaVisible = enEspera;
+      if (enEspera) {
+        if (musicaEsperaPermitida() && huboGestoUsuario) iniciarMusicaEspera();
+      } else {
+        detenerMusicaEspera();
+      }
+      actualizarBotonMusica();
+    }
+
+    function alternarMusicaEspera() {
+      huboGestoUsuario = true;
+      if (musicaEspera) { guardarPermisoMusica(false); detenerMusicaEspera(); }
+      else { guardarPermisoMusica(true); iniciarMusicaEspera(); }
+      actualizarBotonMusica();
+    }
+
+    // El primer toque en cualquier parte de la página "desbloquea" el audio
+    ['click', 'touchend', 'keydown'].forEach(evento => {
+      document.addEventListener(evento, (e) => {
+        if (e.target && e.target.closest && e.target.closest('#btnMusicaEspera')) return; // ese botón se encarga solo
+        huboGestoUsuario = true;
+        if (hayEsperaVisible && musicaEsperaPermitida() && !musicaEspera) iniciarMusicaEspera();
+      }, true);
+    });
 
     let camarasYaMontadas = "";
     // Convierte enlaces normales de YouTube/Facebook a su versión "embebible"
@@ -594,7 +838,12 @@
       const camarasVideo = camaras.slice(0, 3);
       const camaraAudio = camaras[3];
 
-      camarasVideo.filter(c => c.activa && c.tipo).forEach((cam, i) => {
+      // Se conserva la posición ORIGINAL de cada casilla: el admin guarda las
+      // imágenes de la galería con ese número, aunque haya casillas apagadas antes.
+      camarasVideo
+        .map((c, posicionOriginal) => ({ c, posicionOriginal }))
+        .filter(({ c }) => c && c.activa && c.tipo)
+        .forEach(({ c: cam, posicionOriginal }, i) => {
         const box = document.createElement("div");
         box.className = "cam-box";
         box.id = "camBox" + i;
@@ -615,7 +864,7 @@
           box.appendChild(iframe);
           aplicarRotacionCamara(box, iframe, cam.rotacion || 0);
         } else if (cam.tipo === "galeria_nube") {
-          mostrarGaleriaNube(box, cam, i);
+          mostrarGaleriaNube(box, cam, posicionOriginal);
         }
       });
 
