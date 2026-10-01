@@ -232,6 +232,10 @@
       await revisarSiHayGanadorPendiente();
 
       window.addEventListener('resize', ajustarEscala);
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', ajustarEscala);
+        window.visualViewport.addEventListener('scroll', ajustarEscala);
+      }
       window.addEventListener('orientationchange', () => setTimeout(ajustarEscala, 200));
 
       // Contador "EN VIVO" — se une a Presence y muestra cuántos hay conectados
@@ -268,6 +272,20 @@
        pantalla (celular, PC, TV) y orientación, sin cortar nada ni dejar
        espacios vacíos.
        ========================================================================= */
+    // En celulares, window.innerWidth/innerHeight cambian cuando la barra de
+    // direcciones del navegador se oculta o aparece (al hacer scroll, al
+    // girar la pantalla, etc.), y muchos navegadores móviles NO disparan el
+    // evento "resize" normal en ese momento — por eso antes, sin pedir "ver
+    // como computadora", el tablero se calculaba con una medida vieja/chica
+    // y quedaba cortado. visualViewport sí refleja el tamaño real visible en
+    // todo momento, y sí avisa cuando cambia.
+    function obtenerAnchoAltoDisponibles() {
+      if (window.visualViewport) {
+        return { ancho: window.visualViewport.width, alto: window.visualViewport.height };
+      }
+      return { ancho: window.innerWidth, alto: window.innerHeight };
+    }
+
     function ajustarEscala() {
       const contenido = document.getElementById("contenedorPrincipal");
       contenido.style.transform = "none";
@@ -277,10 +295,11 @@
         const rect = contenido.getBoundingClientRect();
         if (!rect.width || !rect.height) { contenido.style.transform = "scale(1)"; return; }
 
+        const { ancho, alto } = obtenerAnchoAltoDisponibles();
         const margen = 0.93; // respiro para que nada quede cortado por el borde
         let escala = Math.min(
-          (window.innerWidth * margen) / rect.width,
-          (window.innerHeight * margen) / rect.height
+          (ancho * margen) / rect.width,
+          (alto * margen) / rect.height
         );
 
         // Protección: nunca dejar que la escala sea inválida (0, negativa, NaN, infinita)
@@ -578,20 +597,30 @@
       if (cont) { cont.style.display = "none"; cont.innerHTML = ""; cont.dataset.itemActual = ""; }
     }
 
-    /* ---- Música suave de espera ----
+    /* ---- Música suave de espera (piano clásico, estilo sonata lenta) ----
        Se genera con el propio navegador (Web Audio), sin archivos de audio:
-       cuatro notas largas con volumen que "respira" lento, un eco suave y
-       una progresión de acordes que cambia cada ~14 segundos.
+       una progresión de acordes (La menor - Fa - Do - Sol, muy típica de
+       piezas clásicas relajantes) donde la "mano izquierda" toca un arpegio
+       continuo y suave (como el acompañamiento de una sonata lenta) y la
+       "mano derecha" toca una melodía sencilla encima. No es ninguna pieza
+       existente — es una composición original pensada solo para sonar así,
+       sin ningún problema de derechos de autor.
        Los navegadores no dejan sonar nada hasta que la persona toca la
        pantalla al menos una vez; por eso empieza con el primer toque.
        El botón 🎵 la apaga/enciende y el navegador recuerda esa elección. */
     const CLAVE_MUSICA_ESPERA = 'tubingo_musica_espera'; // '0' = la persona la apagó
-    const ACORDES_ESPERA = [
-      [130.81, 196.00, 246.94, 329.63], // Do mayor 7
-      [110.00, 196.00, 261.63, 329.63], // La menor 7
-      [ 87.31, 220.00, 261.63, 329.63], // Fa mayor 7
-      [ 98.00, 196.00, 246.94, 293.66]  // Sol 6
+    const INTERVALO_ARPEGIO_MS = 480; // tempo lento ("andante"), como una sonata tranquila
+
+    // Cada acorde se "deshace" en 8 notas que se repiten (el arpegio de la
+    // mano izquierda); "melodia" es la nota que toca la mano derecha al
+    // empezar ese acorde.
+    const PROGRESION_ESPERA = [
+      { arpegio: [110.00, 164.81, 220.00, 164.81, 220.00, 164.81, 220.00, 164.81], melodia: 261.63 }, // La menor
+      { arpegio: [ 87.31, 130.81, 174.61, 130.81, 174.61, 130.81, 174.61, 130.81], melodia: 293.66 }, // Fa mayor
+      { arpegio: [130.81, 196.00, 261.63, 196.00, 261.63, 196.00, 261.63, 196.00], melodia: 329.63 }, // Do mayor
+      { arpegio: [ 98.00, 146.83, 196.00, 146.83, 196.00, 146.83, 196.00, 146.83], melodia: 246.94 }  // Sol mayor
     ];
+
     let musicaEspera = null;
     let hayEsperaVisible = false;
     let huboGestoUsuario = false;
@@ -613,6 +642,61 @@
       b.title = sonando ? "Apagar la música de espera" : "Activar la música de espera";
     }
 
+    // Una sola nota de piano: ataque rápido (como al presionar una tecla) y
+    // caída exponencial (como se apaga una cuerda). "volumen" y "decaimiento"
+    // son distintos para el arpegio (más corto y tenue) y la melodía (más
+    // larga y presente), para que se distingan las dos "manos".
+    function tocarNotaMusica(frecuencia, volumen, decaimiento) {
+      if (!musicaEspera) return;
+      const { ctx, filtro } = musicaEspera;
+      const t0 = ctx.currentTime;
+
+      const fundamental = ctx.createOscillator();
+      fundamental.type = 'sine';
+      fundamental.frequency.value = frecuencia;
+
+      const armonico = ctx.createOscillator(); // un toque de brillo, una octava arriba, muy bajito
+      armonico.type = 'sine';
+      armonico.frequency.value = frecuencia * 2;
+
+      const gFundamental = ctx.createGain();
+      gFundamental.gain.setValueAtTime(0, t0);
+      gFundamental.gain.linearRampToValueAtTime(volumen, t0 + 0.012);
+      gFundamental.gain.exponentialRampToValueAtTime(0.001, t0 + decaimiento);
+
+      const gArmonico = ctx.createGain();
+      gArmonico.gain.setValueAtTime(0, t0);
+      gArmonico.gain.linearRampToValueAtTime(volumen * 0.25, t0 + 0.012);
+      gArmonico.gain.exponentialRampToValueAtTime(0.0005, t0 + decaimiento * 0.6);
+
+      fundamental.connect(gFundamental); gFundamental.connect(filtro);
+      armonico.connect(gArmonico); gArmonico.connect(filtro);
+
+      fundamental.start(t0); fundamental.stop(t0 + decaimiento + 0.1);
+      armonico.start(t0); armonico.stop(t0 + decaimiento * 0.6 + 0.1);
+    }
+
+    // Avanza paso a paso por el arpegio del acorde actual; al llegar al
+    // principio de cada acorde, además toca la nota de melodía encima, y
+    // cuando termina el arpegio completo pasa al siguiente acorde de la
+    // progresión (y vuelve a empezar al llegar al final, en bucle).
+    function programarSiguientePasoMusica() {
+      if (!musicaEspera) return;
+      const m = musicaEspera;
+      const acorde = PROGRESION_ESPERA[m.indiceAcorde];
+
+      tocarNotaMusica(acorde.arpegio[m.indiceArpegio], 0.045, 0.9); // mano izquierda: suave y corta
+
+      if (m.indiceArpegio === 0) {
+        tocarNotaMusica(acorde.melodia, 0.10, 3.0); // mano derecha: un poco más presente y larga
+      }
+
+      m.indiceArpegio = (m.indiceArpegio + 1) % acorde.arpegio.length;
+      if (m.indiceArpegio === 0) m.indiceAcorde = (m.indiceAcorde + 1) % PROGRESION_ESPERA.length;
+
+      m.timeoutId = setTimeout(programarSiguientePasoMusica, INTERVALO_ARPEGIO_MS);
+    }
+
     function iniciarMusicaEspera() {
       if (musicaEspera) return;
       const AC = window.AudioContext || window.webkitAudioContext;
@@ -624,13 +708,13 @@
         const master = ctx.createGain();
         master.gain.value = 0;
 
-        const filtro = ctx.createBiquadFilter();   // quita todo lo agudo/áspero
-        filtro.type = 'lowpass'; filtro.frequency.value = 900; filtro.Q.value = 0.3;
+        const filtro = ctx.createBiquadFilter();   // quita lo más agudo/áspero, suena más cálido
+        filtro.type = 'lowpass'; filtro.frequency.value = 2200; filtro.Q.value = 0.2;
 
-        const eco = ctx.createDelay(1.0);          // eco suave que da sensación de espacio
-        eco.delayTime.value = 0.45;
-        const realimentacion = ctx.createGain(); realimentacion.gain.value = 0.35;
-        const filtroEco = ctx.createBiquadFilter(); filtroEco.type = 'lowpass'; filtroEco.frequency.value = 700;
+        const eco = ctx.createDelay(1.2);          // un poco de espacio, como una sala tranquila
+        eco.delayTime.value = 0.42;
+        const realimentacion = ctx.createGain(); realimentacion.gain.value = 0.22;
+        const filtroEco = ctx.createBiquadFilter(); filtroEco.type = 'lowpass'; filtroEco.frequency.value = 1300;
 
         filtro.connect(master);
         filtro.connect(eco); eco.connect(filtroEco);
@@ -638,30 +722,10 @@
         filtroEco.connect(master);
         master.connect(ctx.destination);
 
-        const voces = ACORDES_ESPERA[0].map((frecuencia, i) => {
-          const osc = ctx.createOscillator();
-          osc.type = i === 0 ? 'triangle' : 'sine';
-          osc.frequency.value = frecuencia;
-          osc.detune.value = (i - 1.5) * 4;        // leve desafinación = sonido más cálido
+        musicaEspera = { ctx, master, filtro, indiceAcorde: 0, indiceArpegio: 0, timeoutId: null };
 
-          const g = ctx.createGain(); g.gain.value = 0.22;
-          const lfo = ctx.createOscillator(); lfo.frequency.value = 0.05 + i * 0.017;
-          const profundidad = ctx.createGain(); profundidad.gain.value = 0.10;
-          lfo.connect(profundidad); profundidad.connect(g.gain);   // el volumen "respira" lento
-
-          osc.connect(g); g.connect(filtro);
-          osc.start(); lfo.start();
-          return { osc, lfo };
-        });
-
-        let indiceAcorde = 0;
-        const timer = setInterval(() => {
-          indiceAcorde = (indiceAcorde + 1) % ACORDES_ESPERA.length;
-          voces.forEach((v, i) => v.osc.frequency.setTargetAtTime(ACORDES_ESPERA[indiceAcorde][i], ctx.currentTime, 2.5));
-        }, 14000);
-
-        master.gain.setTargetAtTime(0.10, ctx.currentTime, 1.5); // entra poco a poco, volumen bajo
-        musicaEspera = { ctx, master, voces, timer };
+        master.gain.setTargetAtTime(0.5, ctx.currentTime, 2.0); // entra poco a poco, volumen bajo
+        setTimeout(programarSiguientePasoMusica, 400);
       } catch (e) {
         musicaEspera = null;
       }
@@ -671,12 +735,10 @@
     function detenerMusicaEspera() {
       if (!musicaEspera) { actualizarBotonMusica(); return; }
       const m = musicaEspera;
-      musicaEspera = null;
-      clearInterval(m.timer);
-      try { m.master.gain.setTargetAtTime(0, m.ctx.currentTime, 0.4); } catch (e) {}
-      setTimeout(() => {
-        try { m.voces.forEach(v => { v.osc.stop(); v.lfo.stop(); }); m.ctx.close(); } catch (e) {}
-      }, 2000);
+      musicaEspera = null; // primero: para que nada programe más notas nuevas
+      if (m.timeoutId) clearTimeout(m.timeoutId);
+      try { m.master.gain.setTargetAtTime(0, m.ctx.currentTime, 0.5); } catch (e) {}
+      setTimeout(() => { try { m.ctx.close(); } catch (e) {} }, 3500);
       actualizarBotonMusica();
     }
 
