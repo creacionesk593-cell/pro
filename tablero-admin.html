@@ -126,6 +126,7 @@
         <input type="number" id="nuevoJuegoPrecio" placeholder="Precio (opcional)" min="0" step="0.01" style="width:140px; padding:8px; border:1px solid #ccc; border-radius:6px;">
         <button class="accion" style="margin:0; width:auto;" onclick="agregarJuego()">➕ Agregar</button>
       </div>
+      <button class="accion" style="margin:0 0 15px 0; width:auto; background:#2ecc71;" onclick="reactivarTodosLosJuegos()">✅ Reactivar todos los premios</button>
       <div id="listaJuegos"></div>
     </div>
 
@@ -829,6 +830,14 @@
       if (error) { alert("❌ " + error.message); return; }
       await cargarJuegos();
       try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: estabaDisponible ? "Marcar juego no disponible" : "Reactivar juego", p_detalle: `ID juego: ${id}` }); } catch(e) {}
+    }
+
+    async function reactivarTodosLosJuegos() {
+      if (!confirm("¿Marcar TODOS los premios como disponibles de nuevo? Útil al empezar un juego nuevo.")) return;
+      const { error } = await _supabase.from('tablero_juegos').update({ disponible: true }).eq('tenant_id', window.MI_TENANT_ID);
+      if (error) { alert("❌ " + error.message); return; }
+      await cargarJuegos();
+      try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Reactivar todos los premios", p_detalle: "Se marcaron todos como disponibles" }); } catch(e) {}
     }
 
     async function eliminarJuego(id) {
