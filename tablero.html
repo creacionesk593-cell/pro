@@ -36,6 +36,13 @@
     .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras { flex-direction: column; width: 300px; }
     .vertical-derecha #zonaCamaras .cam-box, .vertical-izquierda #zonaCamaras .cam-box { width: 100%; }
 
+    /* En vertical, #panelJuegos se mueve (por JS) a ser hijo directo de
+       #contenedorPrincipal — flex-wrap + flex-basis:100% lo obliga a caer en
+       su propia fila completa, usando TODO el ancho (cuadrícula + cámaras). */
+    #contenedorPrincipal.vertical-derecha, #contenedorPrincipal.vertical-izquierda { flex-wrap: wrap; }
+    #contenedorPrincipal.vertical-derecha > #panelJuegos,
+    #contenedorPrincipal.vertical-izquierda > #panelJuegos { flex: 1 0 100%; }
+
     .cam-box { background: black; border-radius: 10px; overflow: hidden; width: 100%; aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; position: relative; }
     .cam-box video, .cam-box iframe { width: 100%; height: 100%; border: none; object-fit: cover; }
     .cam-box span { font-size: 13px; color: #999; padding: 10px; text-align: center; }
@@ -348,16 +355,24 @@
     // se envolvieran, estirándolo muchísimo — y eso obliga a ajustarEscala()
     // a encoger TODO (números, videos, cámaras) para que quepa esa fila
     // gigante, dejando el tablero diminuto.
-    // Ancho fijo de la columna de cámaras en layout vertical + el "gap" del
-    // contenedor principal (ver CSS de #contenedorPrincipal y #zonaCamaras).
-    const ANCHO_COLUMNA_CAMARAS_VERTICAL = 300;
-    const GAP_CONTENEDOR_PRINCIPAL = 20;
-
     function ajustarAnchoPanelJuegos() {
       const panel = document.getElementById("panelJuegos");
       const grilla = document.getElementById("grillaBingo");
       const contenido = document.getElementById("contenedorPrincipal");
       if (!panel || !grilla || !contenido) return;
+
+      // En vertical, panelJuegos ya es hijo directo de #contenedorPrincipal
+      // con flex-basis:100% (ver aplicarLayout() y el CSS) — eso ya lo hace
+      // ocupar todo el ancho real por estructura, sin necesidad de calcular
+      // ningún máximo aquí. Solo se limita el ancho (al tamaño de la
+      // cuadrícula) cuando sigue viviendo DENTRO del área del tablero
+      // (layout horizontal), para que no se estire de más.
+      if (panel.parentElement === contenido) {
+        panel.style.maxWidth = "";
+        panel.style.marginLeft = "";
+        panel.style.marginRight = "";
+        return;
+      }
 
       // Mide en tamaño "real" (sin la escala aplicada en la vuelta anterior),
       // porque ajustarEscala() la vuelve a calcular justo después de esto.
@@ -366,16 +381,7 @@
 
       const anchoGrilla = grilla.getBoundingClientRect().width;
       if (anchoGrilla > 0) {
-        const esVertical = contenido.classList.contains("vertical-derecha") || contenido.classList.contains("vertical-izquierda");
-        // En vertical: la pantalla es angosta, así que los premios aprovechan
-        // TODO el ancho disponible — hasta donde están las cámaras — en vez
-        // de quedar apretados solo en el ancho (más angosto) de la cuadrícula.
-        // En horizontal: se mantiene igual al ancho de la cuadrícula, porque
-        // ahí las cámaras van abajo, no al lado.
-        const anchoObjetivo = esVertical
-          ? anchoGrilla + GAP_CONTENEDOR_PRINCIPAL + ANCHO_COLUMNA_CAMARAS_VERTICAL
-          : anchoGrilla;
-        panel.style.maxWidth = anchoObjetivo + "px";
+        panel.style.maxWidth = anchoGrilla + "px";
         panel.style.marginLeft = "auto";
         panel.style.marginRight = "auto";
       }
@@ -510,6 +516,25 @@
       }
 
       cont.className = clase + (plantilla === 'show' ? ' plantilla-show' : '');
+
+      // El panel de premios cambia de "casa" según el layout:
+      // - Horizontal: se queda dentro de #areaTablero, justo debajo de la
+      //   cuadrícula (igual que siempre), porque ahí las cámaras van abajo.
+      // - Vertical: pasa a ser hijo directo de #contenedorPrincipal, DESPUÉS
+      //   de la cuadrícula y las cámaras — con "flex-wrap" y "flex-basis:100%"
+      //   (ver CSS), eso lo obliga a ocupar su PROPIA fila completa, usando
+      //   todo el ancho real de la pantalla (cuadrícula + cámaras juntas),
+      //   en vez de quedar angosto dentro de la columna del tablero.
+      const panelJuegos = document.getElementById("panelJuegos");
+      const areaTablero = document.getElementById("areaTablero");
+      if (panelJuegos && areaTablero) {
+        const esVertical = clase === 'vertical-derecha' || clase === 'vertical-izquierda';
+        if (esVertical && panelJuegos.parentElement !== cont) {
+          cont.appendChild(panelJuegos); // lo manda al final, como fila propia
+        } else if (!esVertical && panelJuegos.parentElement !== areaTablero) {
+          areaTablero.appendChild(panelJuegos); // lo regresa a su lugar de siempre
+        }
+      }
     }
 
     /* =========================================================================
