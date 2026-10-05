@@ -73,6 +73,13 @@
   <script src="conexion.js"></script>
 </head>
 <body>
+  <!-- "Medidor" invisible: dvw/dvh es la forma más confiable de saber cuánto
+       espacio hay REALMENTE visible en un celular (se ajusta sola cuando la
+       barra de direcciones aparece/desaparece), mejor que leer
+       window.innerWidth/innerHeight o incluso visualViewport directamente
+       en algunos navegadores Android. -->
+  <div id="medidorViewport" style="position:fixed; inset:0; width:100dvw; height:100dvh; visibility:hidden; pointer-events:none; z-index:-1;"></div>
+
   <div id="escenario">
     <div id="contenedorPrincipal" class="horizontal">
       <div id="zonaTablero">
@@ -236,6 +243,16 @@
         window.visualViewport.addEventListener('resize', ajustarEscala);
         window.visualViewport.addEventListener('scroll', ajustarEscala);
       }
+      window.addEventListener('orientationchange', () => {
+        // La barra de direcciones y el tamaño de pantalla a veces tardan un
+        // instante en terminar de acomodarse tras girar el celular.
+        ajustarEscala();
+        setTimeout(ajustarEscala, 300);
+        setTimeout(ajustarEscala, 800);
+      });
+      // Reintentos cortos tras la carga inicial, por la misma razón.
+      setTimeout(ajustarEscala, 300);
+      setTimeout(ajustarEscala, 1000);
       window.addEventListener('orientationchange', () => setTimeout(ajustarEscala, 200));
 
       // Contador "EN VIVO" — se une a Presence y muestra cuántos hay conectados
@@ -280,6 +297,11 @@
     // y quedaba cortado. visualViewport sí refleja el tamaño real visible en
     // todo momento, y sí avisa cuando cambia.
     function obtenerAnchoAltoDisponibles() {
+      const medidor = document.getElementById("medidorViewport");
+      if (medidor) {
+        const r = medidor.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) return { ancho: r.width, alto: r.height };
+      }
       if (window.visualViewport) {
         return { ancho: window.visualViewport.width, alto: window.visualViewport.height };
       }
