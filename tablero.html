@@ -13,7 +13,15 @@
        sin importar el tamaño del dispositivo (celular, PC, TV) ni su orientación. */
     #escenario { position: fixed; inset: 0; display: flex; align-items: flex-start; justify-content: flex-start; overflow: hidden; }
 
-    #contenedorPrincipal { display: flex; gap: 20px; transform-origin: top left; max-width: 100vw; max-height: 100vh; }
+    /* Importante: SIN max-width/max-height aquí. El cálculo de escala en JS
+       necesita medir el tamaño NATURAL y real del contenido (que puede ser
+       mucho más alto que la pantalla, sobre todo en vertical con muchos
+       premios) para saber cuánto encogerlo. Si este contenedor tuviera un
+       tope de 100vh, el navegador reportaría ese tope como si fuera el
+       tamaño real, el cálculo pensaría que "ya casi cabe" y casi no
+       encogería nada — y el resto del contenido quedaría recortado por
+       fuera, sin que el cálculo se diera cuenta. */
+    #contenedorPrincipal { display: flex; gap: 20px; transform-origin: top left; }
     #contenedorPrincipal.horizontal { flex-direction: column; align-items: center; }
     #contenedorPrincipal.vertical-derecha { flex-direction: row; align-items: flex-start; }
     #contenedorPrincipal.vertical-izquierda { flex-direction: row-reverse; align-items: flex-start; }
@@ -340,25 +348,39 @@
     // se envolvieran, estirándolo muchísimo — y eso obliga a ajustarEscala()
     // a encoger TODO (números, videos, cámaras) para que quepa esa fila
     // gigante, dejando el tablero diminuto.
+    // Ancho fijo de la columna de cámaras en layout vertical + el "gap" del
+    // contenedor principal (ver CSS de #contenedorPrincipal y #zonaCamaras).
+    const ANCHO_COLUMNA_CAMARAS_VERTICAL = 300;
+    const GAP_CONTENEDOR_PRINCIPAL = 20;
+
     function ajustarAnchoPanelJuegos() {
       const panel = document.getElementById("panelJuegos");
       const grilla = document.getElementById("grillaBingo");
       const contenido = document.getElementById("contenedorPrincipal");
-      if (!panel || !grilla) return;
+      if (!panel || !grilla || !contenido) return;
 
       // Mide en tamaño "real" (sin la escala aplicada en la vuelta anterior),
       // porque ajustarEscala() la vuelve a calcular justo después de esto.
-      const transformAnterior = contenido ? contenido.style.transform : "";
-      if (contenido) contenido.style.transform = "none";
+      const transformAnterior = contenido.style.transform;
+      contenido.style.transform = "none";
 
       const anchoGrilla = grilla.getBoundingClientRect().width;
       if (anchoGrilla > 0) {
-        panel.style.maxWidth = anchoGrilla + "px";
+        const esVertical = contenido.classList.contains("vertical-derecha") || contenido.classList.contains("vertical-izquierda");
+        // En vertical: la pantalla es angosta, así que los premios aprovechan
+        // TODO el ancho disponible — hasta donde están las cámaras — en vez
+        // de quedar apretados solo en el ancho (más angosto) de la cuadrícula.
+        // En horizontal: se mantiene igual al ancho de la cuadrícula, porque
+        // ahí las cámaras van abajo, no al lado.
+        const anchoObjetivo = esVertical
+          ? anchoGrilla + GAP_CONTENEDOR_PRINCIPAL + ANCHO_COLUMNA_CAMARAS_VERTICAL
+          : anchoGrilla;
+        panel.style.maxWidth = anchoObjetivo + "px";
         panel.style.marginLeft = "auto";
         panel.style.marginRight = "auto";
       }
 
-      if (contenido) contenido.style.transform = transformAnterior;
+      contenido.style.transform = transformAnterior;
     }
 
     let JUEGOS_DISPONIBLES_ACTUALES = []; // para llenar el selector "¿Qué premio ganaste?"
