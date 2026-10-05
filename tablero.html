@@ -21,7 +21,15 @@
        tamaño real, el cálculo pensaría que "ya casi cabe" y casi no
        encogería nada — y el resto del contenido quedaría recortado por
        fuera, sin que el cálculo se diera cuenta. */
-    #contenedorPrincipal { display: flex; gap: 20px; transform-origin: top left; }
+    /* width: max-content es importante: sin esto, un contenedor normal
+       ocupa el ancho de su padre (el ancho de la pantalla), y al activar
+       flex-wrap (abajo, para layouts verticales) el navegador separaría
+       también la cuadrícula de las cámaras si juntas no caben en ese ancho
+       de pantalla — justo lo que NO debe pasar: esas dos siempre van
+       juntas, solo el panel de premios debe caer a su propia fila. Con
+       max-content, el contenedor mide su contenido real (sin límite), y
+       ahí sí caben la cuadrícula y las cámaras una junto a la otra siempre. */
+    #contenedorPrincipal { display: flex; gap: 20px; transform-origin: top left; width: max-content; }
     #contenedorPrincipal.horizontal { flex-direction: column; align-items: center; }
     #contenedorPrincipal.vertical-derecha { flex-direction: row; align-items: flex-start; }
     #contenedorPrincipal.vertical-izquierda { flex-direction: row-reverse; align-items: flex-start; }
