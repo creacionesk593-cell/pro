@@ -41,8 +41,27 @@
     .horizontal #zonaCamaras { flex-direction: row; flex-wrap: wrap; margin-top: 15px; width: 100%; max-width: 480px; }
     .horizontal #zonaCamaras .cam-box { flex: 0 1 calc(50% - 5px); max-width: calc(50% - 5px); }
     .horizontal #zonaCamaras .cam-box:first-child { flex: 1 0 100%; max-width: 100%; }
-    .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras { flex-direction: column; width: 300px; }
+    /* Con 1 o 2 cámaras, caben lado a lado (2 columnas). Con 3, la tercera
+       ocupa todo el ancho abajo (aprovecha mejor el espacio que tenerlas
+       todas apiladas una sobre otra). Si en el futuro se agrega una 4ta,
+       cae sola en la 2da columna de la 2da fila, sin tocar nada de esto. */
+    .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 320px;
+    }
     .vertical-derecha #zonaCamaras .cam-box, .vertical-izquierda #zonaCamaras .cam-box { width: 100%; }
+    .vertical-derecha #zonaCamaras .cam-box:nth-child(3):last-child,
+    .vertical-izquierda #zonaCamaras .cam-box:nth-child(3):last-child { grid-column: 1 / span 2; }
+
+    /* "Estilo Show" en vertical: cámara 1 grande (ocupa todo el ancho de la
+       columna), el resto pequeñas, lado a lado, debajo — la misma idea del
+       estilo Show en horizontal (cámara 1 grande, resto chicas), adaptada
+       al ancho angosto de la columna vertical. Tiene más especificidad que
+       la regla genérica de arriba, así que la reemplaza solo cuando este
+       estilo está activo. */
+    .plantilla-show.vertical-derecha #zonaCamaras,
+    .plantilla-show.vertical-izquierda #zonaCamaras { grid-template-columns: 1fr 1fr; }
+    .plantilla-show.vertical-derecha #zonaCamaras .cam-box:first-child,
+    .plantilla-show.vertical-izquierda #zonaCamaras .cam-box:first-child { grid-column: 1 / span 2; }
 
     /* En vertical, #panelJuegos se mueve (por JS) a ser hijo directo de
        #contenedorPrincipal — flex-wrap + flex-basis:100% lo obliga a caer en
@@ -201,8 +220,8 @@
     <label style="display:block; margin-bottom:4px;">Cuadrícula:</label>
     <select id="selVistaGrid" style="width:100%; padding:6px; margin-bottom:10px; border-radius:6px;">
       <option value="admin">Usar la del organizador</option>
-      <option value="bingo">Columnas B-I-N-G-O</option>
-      <option value="simple">Cuadrícula simple 1-75</option>
+      <option value="bingo">Vertical Bingo (columnas B-I-N-G-O)</option>
+      <option value="simple">Horizontal Bingo (números 1-75 en fila)</option>
     </select>
 
     <button onclick="guardarAjustesVistaLocal()" style="width:100%; padding:8px; background:#2ecc71; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">Aplicar</button>
