@@ -63,6 +63,20 @@
     .plantilla-show.vertical-derecha #zonaCamaras .cam-box:first-child,
     .plantilla-show.vertical-izquierda #zonaCamaras .cam-box:first-child { grid-column: 1 / span 2; }
 
+    /* ===== Diseño "vertical_1" (celular, cuadrícula Vertical Bingo/columnas) =====
+       La cámara se queda AL LADO de la cuadrícula (como ya era), solo que un
+       poco más ancha/grande, para que se aprecie mejor lo que transmite. */
+    .diseno-camara-grande-lado #zonaCamaras { width: 400px; }
+
+    /* ===== Diseño "vertical_2" (celular, cuadrícula Horizontal Bingo/filas) =====
+       La cámara pasa a su PROPIA fila completa, debajo de la cuadrícula,
+       usando todo el ancho de la pantalla (igual que #panelJuegos) — las
+       cámaras 1 y 2 quedan lado a lado pero mucho más grandes que antes,
+       porque ya no están apretadas en una columna angosta de 300-400px. */
+    .diseno-camaras-abajo-anchas #zonaCamaras {
+      flex: 1 0 100%; width: 100%; margin-top: 15px;
+    }
+
     /* En vertical, #panelJuegos se mueve (por JS) a ser hijo directo de
        #contenedorPrincipal — flex-wrap + flex-basis:100% lo obliga a caer en
        su propia fila completa, usando TODO el ancho (cuadrícula + cámaras). */
@@ -523,14 +537,20 @@
       const contJuegos = document.getElementById("listaJuegosPublico");
       if (contJuegos) contJuegos.style.fontSize = TAMANO_FUENTE_JUEGOS + "px";
 
-      aplicarLayout(tablero.layout || 'horizontal', tablero.posicion_camara || 'derecha', tablero.plantilla || 'clasica', ajustesLocales);
+      aplicarLayout(tablero.layout || 'horizontal', tablero.posicion_camara || 'derecha', tablero.plantilla || 'clasica', ajustesLocales, estiloGrid);
       montarCamaras(tablero.camaras || []);
 
       ajustarAnchoPanelJuegos();
       ajustarEscala();
     }
 
-    function aplicarLayout(layout, posicionCamara, plantilla, ajustesLocales) {
+    // Por debajo de este ancho se consideran "diseños de celular". "Ver como
+    // computadora" reporta un ancho mucho mayor (normalmente ~980px), así
+    // que con eso activado se mantiene siempre el diseño de escritorio de
+    // siempre, sin ninguno de estos ajustes — tal como se pidió.
+    const ANCHO_MAXIMO_DISEÑO_MOVIL = 860;
+
+    function aplicarLayout(layout, posicionCamara, plantilla, ajustesLocales, estiloGrid) {
       const cont = document.getElementById("contenedorPrincipal");
       let clase;
 
@@ -542,7 +562,26 @@
           : 'horizontal';
       }
 
-      cont.className = clase + (plantilla === 'show' ? ' plantilla-show' : '');
+      const esVertical = clase === 'vertical-derecha' || clase === 'vertical-izquierda';
+      const { ancho } = obtenerAnchoAltoDisponibles();
+      const esMovil = ancho <= ANCHO_MAXIMO_DISEÑO_MOVIL;
+
+      // Diseños específicos para celular, solo en vertical (horizontal queda
+      // para después, como se acordó):
+      // - "vertical_1" (cuadrícula Vertical Bingo/columnas): la cámara se
+      //   queda AL LADO de la cuadrícula, pero un poco más grande (ver CSS
+      //   de #zonaCamaras más ancho en .diseno-camara-grande-lado).
+      // - "vertical_2" (cuadrícula Horizontal Bingo/filas): la cámara pasa
+      //   a su PROPIA fila completa debajo de la cuadrícula, más grande,
+      //   usando todo el ancho de la pantalla (ver CSS de
+      //   .diseno-camaras-abajo-anchas).
+      const esDisenoVertical1 = esVertical && esMovil && estiloGrid !== 'simple';
+      const esDisenoVertical2 = esVertical && esMovil && estiloGrid === 'simple';
+
+      cont.className = clase
+        + (plantilla === 'show' ? ' plantilla-show' : '')
+        + (esDisenoVertical1 ? ' diseno-camara-grande-lado' : '')
+        + (esDisenoVertical2 ? ' diseno-camaras-abajo-anchas' : '');
 
       // El panel de premios cambia de "casa" según el layout:
       // - Horizontal: se queda dentro de #areaTablero, justo debajo de la
@@ -555,7 +594,6 @@
       const panelJuegos = document.getElementById("panelJuegos");
       const areaTablero = document.getElementById("areaTablero");
       if (panelJuegos && areaTablero) {
-        const esVertical = clase === 'vertical-derecha' || clase === 'vertical-izquierda';
         if (esVertical && panelJuegos.parentElement !== cont) {
           cont.appendChild(panelJuegos); // lo manda al final, como fila propia
         } else if (!esVertical && panelJuegos.parentElement !== areaTablero) {
