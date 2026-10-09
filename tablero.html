@@ -41,48 +41,49 @@
     .horizontal #zonaCamaras { flex-direction: row; flex-wrap: wrap; margin-top: 15px; width: 100%; max-width: 480px; }
     .horizontal #zonaCamaras .cam-box { flex: 0 1 calc(50% - 5px); max-width: calc(50% - 5px); }
     .horizontal #zonaCamaras .cam-box:first-child { flex: 1 0 100%; max-width: 100%; }
-    /* Con 1 o 2 cámaras, caben lado a lado (2 columnas). Con 3, la tercera
-       ocupa todo el ancho abajo (aprovecha mejor el espacio que tenerlas
-       todas apiladas una sobre otra). Si en el futuro se agrega una 4ta,
-       cae sola en la 2da columna de la 2da fila, sin tocar nada de esto. */
-    .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 320px;
-    }
+
+    /* ===== Diseño de COMPUTADORA (el "5to diseño", el original que funcionaba) =====
+       Aplica siempre que NO sea un diseño de celular (pantalla ancha, o "Ver
+       como computadora"): la columna de cámaras de 300px, una sobre otra,
+       al lado de la cuadrícula. */
+    .vertical-derecha #zonaCamaras, .vertical-izquierda #zonaCamaras { flex-direction: column; width: 300px; }
     .vertical-derecha #zonaCamaras .cam-box, .vertical-izquierda #zonaCamaras .cam-box { width: 100%; }
-    .vertical-derecha #zonaCamaras .cam-box:nth-child(3):last-child,
-    .vertical-izquierda #zonaCamaras .cam-box:nth-child(3):last-child { grid-column: 1 / span 2; }
 
-    /* "Estilo Show" en vertical: cámara 1 grande (ocupa todo el ancho de la
-       columna), el resto pequeñas, lado a lado, debajo — la misma idea del
-       estilo Show en horizontal (cámara 1 grande, resto chicas), adaptada
-       al ancho angosto de la columna vertical. Tiene más especificidad que
-       la regla genérica de arriba, así que la reemplaza solo cuando este
-       estilo está activo. */
-    .plantilla-show.vertical-derecha #zonaCamaras,
-    .plantilla-show.vertical-izquierda #zonaCamaras { grid-template-columns: 1fr 1fr; }
-    .plantilla-show.vertical-derecha #zonaCamaras .cam-box:first-child,
-    .plantilla-show.vertical-izquierda #zonaCamaras .cam-box:first-child { grid-column: 1 / span 2; }
+    /* ===== Diseños de CELULAR (solo se activan por clase, la pone el JS) ===== */
 
-    /* ===== Diseño "vertical_1" (celular, cuadrícula Vertical Bingo/columnas) =====
-       La cámara se queda AL LADO de la cuadrícula (como ya era), solo que un
-       poco más ancha/grande, para que se aprecie mejor lo que transmite. */
+    /* "vertical_1" (celular + cuadrícula Vertical Bingo/columnas): las cámaras
+       van AL LADO de la cuadrícula, en una columna más ancha que la de PC
+       (400px vs 300px) para que se aprecie bien lo que se transmite: cada
+       cámara queda más grande que la cuadrícula. Con "Estilo Show", la cámara
+       1 ocupa todo el ancho de la columna y las demás van chicas, de a dos,
+       debajo. */
     .diseno-camara-grande-lado #zonaCamaras { width: 400px; }
+    .plantilla-show.diseno-camara-grande-lado #zonaCamaras { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .plantilla-show.diseno-camara-grande-lado #zonaCamaras .cam-box:first-child { grid-column: 1 / span 2; }
 
-    /* ===== Diseño "vertical_2" (celular, cuadrícula Horizontal Bingo/filas) =====
-       La cámara pasa a su PROPIA fila completa, debajo de la cuadrícula,
-       usando todo el ancho de la pantalla (igual que #panelJuegos) — las
-       cámaras 1 y 2 quedan lado a lado pero mucho más grandes que antes,
-       porque ya no están apretadas en una columna angosta de 300-400px. */
+    /* "vertical_2" (celular + cuadrícula Horizontal Bingo/filas): las cámaras
+       pasan a SU PROPIA FILA debajo de la cuadrícula, usando todo su ancho.
+       Las cámaras 1 y 2 van lado a lado (llenando el ancho de la pantalla), y
+       si hay una 3ra ocupa todo el ancho abajo (una 4ta futura cae sola junto
+       a la 3ra). "contain: inline-size" hace que esta fila NO influya en el
+       ancho del contenedor (lo define la cuadrícula); luego se estira a ese
+       ancho. */
     .diseno-camaras-abajo-anchas #zonaCamaras {
-      flex: 1 0 100%; width: 100%; margin-top: 15px;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+      flex: 1 0 100%; width: 100%; margin-top: 15px; contain: inline-size;
     }
+    .diseno-camaras-abajo-anchas #zonaCamaras .cam-box:nth-child(3):last-child { grid-column: 1 / span 2; }
 
     /* En vertical, #panelJuegos se mueve (por JS) a ser hijo directo de
-       #contenedorPrincipal — flex-wrap + flex-basis:100% lo obliga a caer en
-       su propia fila completa, usando TODO el ancho (cuadrícula + cámaras). */
-    #contenedorPrincipal.vertical-derecha, #contenedorPrincipal.vertical-izquierda { flex-wrap: wrap; }
+       #contenedorPrincipal. Con flex-wrap + flex-basis:100% cae en su propia
+       fila y ocupa todo el ancho de la cuadrícula + cámaras. "flex: none" en
+       el contenedor es CLAVE: sin eso, el contenedor (que es un ítem flex de
+       #escenario) se encogía al ancho de la pantalla, y las cámaras caían
+       debajo de la cuadrícula. "contain: inline-size" en el panel evita que
+       su texto (todo en una línea) infle el ancho del contenedor. */
+    #contenedorPrincipal.vertical-derecha, #contenedorPrincipal.vertical-izquierda { flex: none; flex-wrap: wrap; }
     #contenedorPrincipal.vertical-derecha > #panelJuegos,
-    #contenedorPrincipal.vertical-izquierda > #panelJuegos { flex: 1 0 100%; }
+    #contenedorPrincipal.vertical-izquierda > #panelJuegos { flex: 1 0 100%; contain: inline-size; }
 
     .cam-box { background: black; border-radius: 10px; overflow: hidden; width: 100%; aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; position: relative; }
     .cam-box video, .cam-box iframe { width: 100%; height: 100%; border: none; object-fit: cover; }
@@ -364,27 +365,45 @@
       return { ancho: window.innerWidth, alto: window.innerHeight };
     }
 
+    // Modo (celular / computadora) con el que se aplicó el diseño por última vez.
+    // Si el ancho de pantalla cruza el límite (ej. girar el celular, o cambiar el
+    // tamaño de la ventana en la PC), se vuelve a pintar el tablero con el diseño
+    // que corresponde.
+    let ULTIMO_MODO_MOVIL = null;
+
     function ajustarEscala() {
       const contenido = document.getElementById("contenedorPrincipal");
+
+      const { ancho: anchoPantalla } = obtenerAnchoAltoDisponibles();
+      const esMovilAhora = anchoPantalla <= ANCHO_MAXIMO_DISEÑO_MOVIL;
+      if (ULTIMO_MODO_MOVIL !== null && esMovilAhora !== ULTIMO_MODO_MOVIL && ULTIMO_TABLERO_RECIBIDO) {
+        ULTIMO_MODO_MOVIL = esMovilAhora; // se actualiza ANTES para no entrar en bucle
+        pintarTablero(ULTIMO_TABLERO_RECIBIDO); // vuelve a llamar a ajustarEscala al terminar
+        return;
+      }
+
+      // Se mide y se aplica en el MISMO paso (síncrono). Antes se medía dentro
+      // de un requestAnimationFrame: si esta función se llamaba dos veces
+      // seguidas (pasa seguido: al pintar, al montar cámaras, al cargar premios,
+      // al redimensionar), la segunda medición ocurría sobre el tablero YA
+      // escalado, daba un tamaño falso y calculaba una escala equivocada.
+      // Leer getBoundingClientRect() fuerza al navegador a recalcular el
+      // diseño en ese instante, así que no hace falta esperar un frame.
       contenido.style.transform = "none";
+      const rect = contenido.getBoundingClientRect();
+      if (!rect.width || !rect.height) { contenido.style.transform = "scale(1)"; return; }
 
-      // Espera un frame para que el navegador recalcule el tamaño natural
-      requestAnimationFrame(() => {
-        const rect = contenido.getBoundingClientRect();
-        if (!rect.width || !rect.height) { contenido.style.transform = "scale(1)"; return; }
+      const { ancho, alto } = obtenerAnchoAltoDisponibles();
+      const margen = 0.93; // respiro para que nada quede cortado por el borde
+      let escala = Math.min(
+        (ancho * margen) / rect.width,
+        (alto * margen) / rect.height
+      );
 
-        const { ancho, alto } = obtenerAnchoAltoDisponibles();
-        const margen = 0.93; // respiro para que nada quede cortado por el borde
-        let escala = Math.min(
-          (ancho * margen) / rect.width,
-          (alto * margen) / rect.height
-        );
+      // Protección: nunca dejar que la escala sea inválida (0, negativa, NaN, infinita)
+      if (!isFinite(escala) || escala <= 0) escala = 1;
 
-        // Protección: nunca dejar que la escala sea inválida (0, negativa, NaN, infinita)
-        if (!isFinite(escala) || escala <= 0) escala = 1;
-
-        contenido.style.transform = `scale(${escala})`;
-      });
+      contenido.style.transform = `scale(${escala})`;
     }
 
     let TAMANO_FUENTE_JUEGOS = 16;
@@ -475,7 +494,10 @@
       const visible = !!tablero.visible_publico;
       document.getElementById("mensajeEspera").style.display = visible ? "none" : "block";
       document.getElementById("contenidoTablero").style.display = visible ? "block" : "none";
-      document.getElementById("zonaCamaras").style.display = visible ? "flex" : "none";
+      // OJO: al mostrarse se quita el estilo en línea ("") para que mande el CSS
+      // (columna en PC, cuadrícula en celular). Antes se forzaba "flex" aquí, y
+      // eso pisaba las reglas de CSS de los diseños.
+      document.getElementById("zonaCamaras").style.display = visible ? "" : "none";
 
       // El botón BINGO solo existe mientras el tablero está visible Y el
       // organizador lo activó. Se decide ANTES del return de abajo: si no,
@@ -565,6 +587,7 @@
       const esVertical = clase === 'vertical-derecha' || clase === 'vertical-izquierda';
       const { ancho } = obtenerAnchoAltoDisponibles();
       const esMovil = ancho <= ANCHO_MAXIMO_DISEÑO_MOVIL;
+      ULTIMO_MODO_MOVIL = esMovil;
 
       // Diseños específicos para celular, solo en vertical (horizontal queda
       // para después, como se acordó):
