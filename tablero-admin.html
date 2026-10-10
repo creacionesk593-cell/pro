@@ -485,8 +485,12 @@
       }
 
       const base = origen + rutaCarpeta;
-      document.getElementById("linkPublico").value = base + 'tablero.html?tenant=' + encodeURIComponent(slug);
-      document.getElementById("linkPrivado").value = base + 'tablero-preview.html?tenant=' + encodeURIComponent(slug);
+      // Enlaces CORTOS: .../pro/triunfo_bingo/tablero  y  .../pro/triunfo_bingo/preview
+      // El 404.html los traduce a tablero.html?tenant=... y tablero-preview.html?tenant=...
+      // Si el nombre se cambia desde el panel (admin.html), estos enlaces se
+      // rearman con el nombre nuevo la próxima vez que se abre esta página.
+      document.getElementById("linkPublico").value = slug ? base + encodeURIComponent(slug) + '/tablero' : '';
+      document.getElementById("linkPrivado").value = slug ? base + encodeURIComponent(slug) + '/preview' : '';
     }
 
     async function cargarTablero() {
