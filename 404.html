@@ -2,27 +2,48 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Redirigiendo...</title>
+</head>
+<body style="margin:0; background:#0f172a; color:#e2e8f0; font-family:sans-serif;">
+  <p id="mensaje" style="text-align:center; margin-top:40px; padding:0 20px;">Redirigiendo...</p>
+
   <script>
-    // GitHub Pages muestra este archivo cuando la URL no existe como carpeta real,
-    // por ejemplo: /pro/triunfobingo  o  /pro/triunfobingo/tablero
-    // Detecta automáticamente el nombre de tu repositorio (no hay que escribirlo a mano),
-    // y redirige a la página correcta pasándole el "slug" del cliente como parámetro.
+    // GitHub Pages muestra este archivo cuando la URL no existe como carpeta/archivo real.
+    // Convierte los enlaces CORTOS en el enlace real de cada página:
+    //
+    //   /pro/triunfo_bingo             → index.html            (login del cliente)
+    //   /pro/triunfo_bingo/tablero     → tablero.html          (tablero PÚBLICO)
+    //   /pro/triunfo_bingo/preview     → tablero-preview.html  (vista previa PRIVADA)
+    //   /pro/triunfo_bingo/registro    → registro.html
+    //   /pro/triunfo_bingo/solidario   → registro-solidario.html
+    //
+    // El nombre del repositorio ("pro") se detecta solo, no hay que escribirlo.
     (function () {
       const partes = window.location.pathname.split('/').filter(Boolean);
       const nombreRepo = partes[0] || "";
       const slug = partes[1] || "";
-      const pagina = partes[2] || "";
+      const pagina = (partes[2] || "").toLowerCase();
       const base = "/" + nombreRepo + "/";
 
-      // Mapa: palabra corta en la URL → archivo real
+      // Palabra corta en la URL → archivo real
       const paginas = {
-        "tablero": "tablero-preview.html",
+        "tablero": "tablero.html",
+        "preview": "tablero-preview.html",
+        "vista-previa": "tablero-preview.html",
         "registro": "registro.html",
         "solidario": "registro-solidario.html"
       };
 
       if (slug && !slug.includes(".")) {
+        // Si escribieron una palabra que no existe (ej. "/tablro"), se avisa en vez
+        // de mandar al login sin explicar nada.
+        if (pagina && !paginas[pagina]) {
+          document.getElementById("mensaje").innerHTML =
+            "Este enlace no es válido.<br><br>Revisa que esté bien escrito. " +
+            "Debe terminar en <b>/tablero</b>, <b>/registro</b> o <b>/solidario</b>.";
+          return;
+        }
         const archivo = paginas[pagina] || "index.html";
         window.location.replace(base + archivo + "?tenant=" + encodeURIComponent(slug));
       } else {
@@ -30,8 +51,5 @@
       }
     })();
   </script>
-</head>
-<body>
-  <p style="font-family:sans-serif; text-align:center; margin-top:40px;">Redirigiendo...</p>
 </body>
 </html>
