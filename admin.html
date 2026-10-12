@@ -150,8 +150,34 @@
         </div>
       </div>
 
+      <div class="seccion">
+        <h3>✏️ Nombre de tu enlace</h3>
+        <p style="font-size:0.85rem; color:#7f8c8d; margin-top:-5px;">
+          Es el nombre corto que aparece en todos tus enlaces. Si lo cambias, <b>los enlaces con el nombre anterior dejan de funcionar al instante</b>
+          (tablero, vista previa, registro de venta, registro solidario y login) y los nuevos empiezan a funcionar.
+          Úsalo, por ejemplo, para cortar el acceso de quienes ya tienen el enlace viejo.
+        </p>
+
+        <label style="font-weight:bold; font-size:0.85rem;">Nombre actual:</label>
+        <div id="slugActualTexto" style="font-family:monospace; font-size:1rem; margin:4px 0 14px 0;">—</div>
+
+        <label style="font-weight:bold; font-size:0.85rem;">Nuevo nombre:</label>
+        <div style="display:flex; gap:8px;">
+          <input type="text" id="inputNuevoSlug" maxlength="30" placeholder="ej: triunfo_bingo_ec" autocomplete="off" autocapitalize="off" spellcheck="false"
+                 oninput="actualizarVistaPreviaSlug()"
+                 style="flex:1; padding:8px; border:1px solid #ccc; border-radius:6px; font-size:0.9rem;">
+          <button type="button" id="btnCambiarSlug" onclick="cambiarSlugEnlace()"
+                  style="width:auto; padding:8px 14px; background:#e67e22; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">Cambiar</button>
+        </div>
+        <div id="vistaPreviaSlug" style="font-size:0.8rem; color:#7f8c8d; margin-top:6px; word-break:break-all; min-height:16px;"></div>
+        <div id="estadoCambioSlug" style="font-size:0.85rem; margin-top:6px; min-height:18px;"></div>
+        <p style="font-size:0.75rem; color:#95a5a6; margin:8px 0 0 0;">
+          De 3 a 30 caracteres: letras minúsculas sin tildes, números, guion (-) o guion bajo (_).
+        </p>
+      </div>
+
       <div class="tarjeta" style="margin-bottom:20px; padding:20px;">
-        <h3 style="margin-top:0;">🔑 Juegos y Códigos de WhatsApp (hasta 7 de Venta + 7 Solidarios)</h3>
+        <h3 style="margin-top:0;">🔑 Juegos y Códigos de Grupo (hasta 7 de Venta + 7 Solidarios)</h3>
         <p style="font-size:0.85rem; color:#7f8c8d; margin-top:-8px;">
           Cada fila es un juego independiente y completo: su propio código, su propio límite de cartones,
           sus propios caracteres de QR, su propia fecha de cierre, y si permite registro manual — igual que
@@ -308,7 +334,7 @@
       </div>
 
       <div class="seccion" style="border-left: 5px solid #f1c40f; display:none;">
-        <h3 style="color: #d35400;">⚙️ Parámetros y Restricciones Globales del Bingo (en desuso — ahora cada juego tiene los suyos, arriba en "Juegos y Códigos de WhatsApp")</h3>
+        <h3 style="color: #d35400;">⚙️ Parámetros y Restricciones Globales del Bingo (en desuso — ahora cada juego tiene los suyos, arriba en "Juegos y Códigos de Grupo")</h3>
         <p style="font-size:0.85rem; color:#7f8c8d; margin-top:-5px;">Controla los límites y la fecha límite de cierre para el registro general de cartones de juego.</p>
         
         <div class="grid-parametros">
@@ -938,7 +964,7 @@
     }
 
     /* =========================================================================
-       CÓDIGOS DE WHATSAPP POR JUEGO — reemplaza al código único de antes.
+       CÓDIGOS DE GRUPO POR JUEGO — reemplaza al código único de antes.
        Cada fila = un código ligado a un juego (tipo + categoría), con un
        límite de cartones opcional propio para ese código.
        ========================================================================= */
@@ -969,9 +995,89 @@
       }
 
       const base = origen + rutaCarpeta;
+      BASE_ENLACES = base;
       const slug = window.MI_TENANT_SLUG || "";
-      document.getElementById("linkRegistroVenta").value = base + "registro.html?tenant=" + encodeURIComponent(slug);
-      document.getElementById("linkRegistroSolidario").value = base + "registro-solidario.html?tenant=" + encodeURIComponent(slug);
+
+      // Enlaces CORTOS (ej. .../pro/triunfo_bingo/registro). El 404.html los
+      // traduce a la página real (registro.html?tenant=...). Si por algún
+      // motivo no hay nombre, se dejan vacíos en vez de armar un enlace roto.
+      document.getElementById("linkRegistroVenta").value = slug ? base + encodeURIComponent(slug) + "/registro" : "";
+      document.getElementById("linkRegistroSolidario").value = slug ? base + encodeURIComponent(slug) + "/solidario" : "";
+
+      document.getElementById("slugActualTexto").textContent = slug || "—";
+      document.getElementById("btnCambiarSlug").disabled = !slug;
+      actualizarVistaPreviaSlug();
+    }
+
+    // ===== Cambiar el nombre (slug) del enlace =====
+    // El servidor (función cambiar_mi_slug) es quien decide: aquí solo se avisa
+    // antes para no hacer viajes inútiles. Mantener esta lista igual a la del SQL.
+    let BASE_ENLACES = "";
+    const REGEX_SLUG = /^[a-z0-9][a-z0-9_-]{2,29}$/;
+    const SLUGS_RESERVADOS = ['admin','superadmin','index','login','tablero','preview','vista-previa','registro','solidario','actualizar-clave','actualizar_clave','api','pro','assets','static','public','404','www','conexion','auth'];
+
+    function validarSlugCliente(nuevo) {
+      if (!REGEX_SLUG.test(nuevo)) return "Debe tener de 3 a 30 caracteres: solo letras minúsculas sin tildes, números, guion (-) o guion bajo (_), y empezar con una letra o un número.";
+      if (SLUGS_RESERVADOS.includes(nuevo)) return `"${nuevo}" está reservado por el sistema, elige otro.`;
+      return null;
+    }
+
+    function actualizarVistaPreviaSlug() {
+      const caja = document.getElementById("vistaPreviaSlug");
+      const nuevo = document.getElementById("inputNuevoSlug").value.trim().toLowerCase();
+      if (!nuevo) { caja.textContent = ""; return; }
+      const error = validarSlugCliente(nuevo);
+      if (error) { caja.style.color = "#e74c3c"; caja.textContent = error; return; }
+      caja.style.color = "#7f8c8d";
+      caja.textContent = "Tu tablero público sería: " + BASE_ENLACES + nuevo + "/tablero";
+    }
+
+    async function cambiarSlugEnlace() {
+      const input = document.getElementById("inputNuevoSlug");
+      const boton = document.getElementById("btnCambiarSlug");
+      const estado = document.getElementById("estadoCambioSlug");
+      const actual = window.MI_TENANT_SLUG || "";
+      const nuevo = input.value.trim().toLowerCase();
+
+      const error = validarSlugCliente(nuevo);
+      if (error) { estado.style.color = "#e74c3c"; estado.textContent = "⚠️ " + error; return; }
+      if (nuevo === actual) { estado.style.color = "#e67e22"; estado.textContent = "Ese ya es tu nombre actual."; return; }
+
+      if (!confirm(
+        `¿Cambiar el nombre del enlace de "${actual}" a "${nuevo}"?\n\n` +
+        `LOS ENLACES CON EL NOMBRE ANTERIOR DEJARÁN DE FUNCIONAR AL INSTANTE: tablero, vista previa, registro de venta, registro solidario y login.\n\n` +
+        `Tendrás que compartir los enlaces nuevos con tus participantes y vendedores.`
+      )) return;
+
+      boton.disabled = true;
+      estado.style.color = "#7f8c8d"; estado.textContent = "Cambiando...";
+
+      const { data, error: errorRpc } = await _supabase.rpc('cambiar_mi_slug', { p_nuevo_slug: nuevo });
+      boton.disabled = false;
+
+      if (errorRpc) {
+        estado.style.color = "#e74c3c";
+        estado.textContent = (errorRpc.code === 'PGRST202' || /cambiar_mi_slug/.test(errorRpc.message || "") && /find the function/i.test(errorRpc.message || ""))
+          ? "❌ Falta correr sql_cambiar_slug.sql en Supabase (la función todavía no existe)."
+          : "❌ " + errorRpc.message;
+        return;
+      }
+
+      // El servidor devuelve el nombre ya normalizado (minúsculas, sin espacios)
+      window.MI_TENANT_SLUG = data;
+
+      // Si la dirección de esta página lleva ?tenant=nombre_viejo, se actualiza
+      // para que al recargar no se pierda la sesión por un nombre que ya no existe.
+      try {
+        const url = new URL(window.location.href);
+        if (url.searchParams.has('tenant')) { url.searchParams.set('tenant', data); history.replaceState(null, '', url.toString()); }
+      } catch (e) {}
+
+      await llenarLinksDeRegistro(); // rearma los enlaces con el nombre nuevo
+      input.value = "";
+      actualizarVistaPreviaSlug();
+      estado.style.color = "#2ecc71";
+      estado.textContent = `✅ Listo. Tu nuevo nombre es "${data}". Los enlaces con "${actual}" ya no funcionan; comparte los nuevos.`;
     }
 
     function copiarLinkRegistro(idCampo) {
@@ -1072,7 +1178,7 @@
         if (!confirm(`¿Eliminar el código "${fila.codigo}"? Nadie podrá volver a usarlo para registrarse.`)) return;
         const { error } = await _supabase.from('codigos_canal').delete().eq('id', fila.id);
         if (error) { alert("Error eliminando: " + error.message); return; }
-        await registrarLog("Eliminar código de canal", `Se eliminó el código "${fila.codigo}"`);
+        await registrarLog("Eliminar código de grupo", `Se eliminó el código "${fila.codigo}"`);
       }
       codigosCanalCache.splice(indice, 1);
       renderizarFilasCodigosCanal();
@@ -1156,7 +1262,7 @@
           if (errUpdate) throw errUpdate;
         }
 
-        await registrarLog("Guardar códigos de canal", `Se guardaron ${codigosCanalCache.length} código(s) de WhatsApp`);
+        await registrarLog("Guardar códigos de grupo", `Se guardaron ${codigosCanalCache.length} código(s) de grupo`);
         alert("✅ Códigos guardados correctamente.");
         cargarCodigosCanal(); // recarga para traer los "id" recién asignados a los códigos nuevos
       } catch (err) {
