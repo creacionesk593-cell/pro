@@ -126,7 +126,10 @@
         <input type="number" id="nuevoJuegoPrecio" placeholder="Precio (opcional)" min="0" step="0.01" style="width:140px; padding:8px; border:1px solid #ccc; border-radius:6px;">
         <button class="accion" style="margin:0; width:auto;" onclick="agregarJuego()">➕ Agregar</button>
       </div>
-      <button class="accion" style="margin:0 0 15px 0; width:auto; background:#2ecc71;" onclick="reactivarTodosLosJuegos()">✅ Reactivar todos los premios</button>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:15px;">
+        <button class="accion" style="margin:0; width:auto; background:#2ecc71;" onclick="reactivarTodosLosJuegos()">✅ Reactivar todos los premios</button>
+        <button class="accion" style="margin:0; width:auto; background:#c0392b;" onclick="eliminarTodosLosJuegos()">🗑️ Eliminar todos los premios</button>
+      </div>
       <div id="listaJuegos"></div>
     </div>
 
@@ -763,52 +766,130 @@
     /* =========================================================================
        GESTIÓN DE JUEGOS / FIGURAS (hasta 20)
        ========================================================================= */
-    async function cargarJuegos() {
-      const { data, error } = await _supabase.from('tablero_juegos').select('*').eq('tenant_id', window.MI_TENANT_ID).order('orden', { ascending: true });
-      if (error) { console.error(error.message); return; }
+    // Copia en memoria de la lista, para poder pintarla (y entrar/salir del modo
+    // edición) sin ir a la base de datos cada vez.
+    let JUEGOS_CACHE = [];
+    let JUEGO_EN_EDICION = null;                    // id del premio que se está editando (o null)
+    let JUEGO_BORRADOR = { nombre: "", precio: "" }; // lo escrito mientras se edita
 
+    async function cargarJuegos() {
+      const { data, error } = await _supabase.from('tablero_juegos').select('*').eq('tenant_id', window.MI_TENANT_ID).order('orden', { ascending: true }).order('id', { ascending: true });
+      if (error) { console.error(error.message); return; }
+      JUEGOS_CACHE = data || [];
+      // Si el premio que se estaba editando ya no existe (se borró desde otra pestaña), se sale de la edición
+      if (JUEGO_EN_EDICION !== null && !JUEGOS_CACHE.some(j => j.id === JUEGO_EN_EDICION)) JUEGO_EN_EDICION = null;
+      renderizarJuegos();
+    }
+
+    function renderizarJuegos() {
       const cont = document.getElementById("listaJuegos");
-      if (!data || data.length === 0) {
+      if (!JUEGOS_CACHE.length) {
         cont.innerHTML = `<p style="color:#999; font-size:0.85rem;">Todavía no has agregado ningún juego.</p>`;
         return;
       }
 
-      cont.innerHTML = data.map((j, i) => `
+      cont.innerHTML = JUEGOS_CACHE.map((j, i) => {
+        // --- Fila en modo edición: casillas para corregir el nombre y el precio ---
+        if (j.id === JUEGO_EN_EDICION) {
+          return `
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; padding:10px; border:2px solid #3498db; border-radius:6px; margin-bottom:8px; background:#f4faff;">
+          <div style="display:flex; gap:8px; flex-wrap:wrap; flex:1; min-width:220px;">
+            <input type="text" id="editNombreJuego" value="${escaparHtml(JUEGO_BORRADOR.nombre)}" maxlength="80" placeholder="Nombre del juego"
+                   oninput="JUEGO_BORRADOR.nombre = this.value" onkeydown="teclaEdicionJuego(event, ${j.id})"
+                   style="flex:1; min-width:160px; padding:8px; border:1px solid #ccc; border-radius:6px;">
+            <input type="number" id="editPrecioJuego" value="${escaparHtml(JUEGO_BORRADOR.precio)}" min="0" step="0.01" placeholder="Precio (opcional)"
+                   oninput="JUEGO_BORRADOR.precio = this.value" onkeydown="teclaEdicionJuego(event, ${j.id})"
+                   style="width:140px; padding:8px; border:1px solid #ccc; border-radius:6px;">
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button class="accion" style="margin:0; padding:6px 12px; font-size:0.85rem; background:#2ecc71;" onclick="guardarEdicionJuego(${j.id})">💾 Guardar</button>
+            <button class="accion" style="margin:0; padding:6px 12px; font-size:0.85rem; background:#95a5a6;" onclick="cancelarEdicionJuego()">Cancelar</button>
+          </div>
+        </div>`;
+        }
+
+        // --- Fila normal ---
+        return `
         <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; border:1px solid #eee; border-radius:6px; margin-bottom:8px; ${j.disponible ? '' : 'opacity:0.6;'}">
           <div style="display:flex; align-items:center; gap:10px;">
             <div style="display:flex; flex-direction:column; gap:2px;">
               <button class="accion" style="margin:0; width:auto; padding:2px 8px; font-size:0.75rem; background:${i === 0 ? '#ccc' : '#7f8c8d'};" ${i === 0 ? 'disabled' : ''} onclick="moverJuego(${j.id}, -1)">▲</button>
-              <button class="accion" style="margin:0; width:auto; padding:2px 8px; font-size:0.75rem; background:${i === data.length - 1 ? '#ccc' : '#7f8c8d'};" ${i === data.length - 1 ? 'disabled' : ''} onclick="moverJuego(${j.id}, 1)">▼</button>
+              <button class="accion" style="margin:0; width:auto; padding:2px 8px; font-size:0.75rem; background:${i === JUEGOS_CACHE.length - 1 ? '#ccc' : '#7f8c8d'};" ${i === JUEGOS_CACHE.length - 1 ? 'disabled' : ''} onclick="moverJuego(${j.id}, 1)">▼</button>
             </div>
             <div>
-              <strong>${j.nombre}</strong>
+              <strong>${escaparHtml(j.nombre)}</strong>
               ${j.precio > 0 ? ` — $${Number(j.precio).toFixed(2)}` : ''}
               ${!j.disponible ? ' <span style="color:#e74c3c; font-weight:bold;">(YA NO DISPONIBLE)</span>' : ''}
             </div>
           </div>
-          <div style="display:flex; gap:6px;">
+          <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
             <button class="accion" style="margin:0; padding:6px 10px; font-size:0.8rem; background:${j.disponible ? '#e74c3c' : '#2ecc71'};" onclick="alternarDisponibilidadJuego(${j.id}, ${j.disponible})">
               ${j.disponible ? 'Marcar No Disponible' : 'Reactivar'}
             </button>
+            <button class="accion" style="margin:0; padding:6px 10px; font-size:0.8rem; background:#3498db;" onclick="empezarEdicionJuego(${j.id})">✏️ Editar</button>
             <button class="accion" style="margin:0; padding:6px 10px; font-size:0.8rem; background:#95a5a6;" onclick="eliminarJuego(${j.id})">Eliminar</button>
           </div>
-        </div>`).join("");
+        </div>`;
+      }).join("");
+    }
+
+    // ===== Editar un premio (por si se escribió mal el nombre o el precio) =====
+    function empezarEdicionJuego(id) {
+      const j = JUEGOS_CACHE.find(x => x.id === id);
+      if (!j) return;
+      JUEGO_EN_EDICION = id; // si había otro en edición, se descarta
+      JUEGO_BORRADOR = { nombre: j.nombre || "", precio: Number(j.precio) > 0 ? String(j.precio) : "" };
+      renderizarJuegos();
+      const caja = document.getElementById("editNombreJuego");
+      if (caja) { caja.focus(); caja.select(); }
+    }
+
+    function cancelarEdicionJuego() {
+      JUEGO_EN_EDICION = null;
+      renderizarJuegos();
+    }
+
+    function teclaEdicionJuego(evento, id) {
+      if (evento.key === "Enter") { evento.preventDefault(); guardarEdicionJuego(id); }
+      else if (evento.key === "Escape") { cancelarEdicionJuego(); }
+    }
+
+    async function guardarEdicionJuego(id) {
+      const nombre = (document.getElementById("editNombreJuego").value || "").trim();
+      const precio = parseFloat(document.getElementById("editPrecioJuego").value) || 0;
+      if (!nombre) { alert("El nombre del juego no puede quedar vacío."); return; }
+      if (precio < 0) { alert("El precio no puede ser negativo."); return; }
+
+      const anterior = (JUEGOS_CACHE.find(x => x.id === id) || {}).nombre || "";
+      const { error } = await _supabase.from('tablero_juegos').update({ nombre, precio }).eq('id', id).eq('tenant_id', window.MI_TENANT_ID);
+      if (error) { alert("❌ " + error.message); return; }
+
+      JUEGO_EN_EDICION = null;
+      await cargarJuegos();
+      try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Editar juego del tablero", p_detalle: anterior === nombre ? nombre : `"${anterior}" → "${nombre}"` }); } catch(e) {}
     }
 
     async function moverJuego(id, direccion) {
-      const { data, error } = await _supabase.from('tablero_juegos').select('*').eq('tenant_id', window.MI_TENANT_ID).order('orden', { ascending: true });
+      const { data, error } = await _supabase.from('tablero_juegos').select('*').eq('tenant_id', window.MI_TENANT_ID).order('orden', { ascending: true }).order('id', { ascending: true });
       if (error) { alert("❌ " + error.message); return; }
 
-      const idx = data.findIndex(j => j.id === id);
+      const lista = data || [];
+      const idx = lista.findIndex(j => j.id === id);
       const idxVecino = idx + direccion;
-      if (idx === -1 || idxVecino < 0 || idxVecino >= data.length) return; // ya está en el extremo
+      if (idx === -1 || idxVecino < 0 || idxVecino >= lista.length) return; // ya está en el extremo
 
-      const actual = data[idx];
-      const vecino = data[idxVecino];
+      // Se intercambian de lugar en la lista y se reasigna 0, 1, 2... a TODOS los
+      // que cambian de posición. Así, si por algún motivo había posiciones
+      // repetidas o con huecos (pasaba al borrar uno y agregar otro), se arreglan
+      // solas; antes se intercambiaban solo los dos números y, con repetidos,
+      // la flecha no hacía nada.
+      [lista[idx], lista[idxVecino]] = [lista[idxVecino], lista[idx]];
+      const cambios = lista.map((j, i) => ({ id: j.id, orden: i, ordenAnterior: Number(j.orden) })).filter(c => c.orden !== c.ordenAnterior);
 
-      // Intercambia el "orden" entre los dos, así se recorre solo un puesto
-      await _supabase.from('tablero_juegos').update({ orden: vecino.orden }).eq('id', actual.id);
-      await _supabase.from('tablero_juegos').update({ orden: actual.orden }).eq('id', vecino.id);
+      for (const c of cambios) {
+        const { error: errorOrden } = await _supabase.from('tablero_juegos').update({ orden: c.orden }).eq('id', c.id).eq('tenant_id', window.MI_TENANT_ID);
+        if (errorOrden) { alert("❌ " + errorOrden.message); break; }
+      }
       await cargarJuegos();
     }
 
@@ -820,7 +901,13 @@
       const { count } = await _supabase.from('tablero_juegos').select('id', { count: 'exact', head: true }).eq('tenant_id', window.MI_TENANT_ID);
       if ((count || 0) >= 20) { alert("Ya tienes 20 juegos creados (el máximo). Elimina alguno para agregar otro."); return; }
 
-      const { error } = await _supabase.from('tablero_juegos').insert({ tenant_id: window.MI_TENANT_ID, nombre, precio, orden: count || 0 });
+      // La posición del premio nuevo es la MÁS ALTA + 1 (no la cantidad de premios:
+      // después de borrar uno del medio, la cantidad coincidía con la posición de
+      // otro premio y quedaban dos con la misma, y las flechas dejaban de funcionar).
+      const { data: ultimo } = await _supabase.from('tablero_juegos').select('orden').eq('tenant_id', window.MI_TENANT_ID).order('orden', { ascending: false }).limit(1);
+      const siguienteOrden = (ultimo && ultimo.length) ? Number(ultimo[0].orden) + 1 : 0;
+
+      const { error } = await _supabase.from('tablero_juegos').insert({ tenant_id: window.MI_TENANT_ID, nombre, precio, orden: siguienteOrden });
       if (error) { alert("❌ " + error.message); return; }
 
       document.getElementById("nuevoJuegoNombre").value = "";
@@ -842,6 +929,19 @@
       if (error) { alert("❌ " + error.message); return; }
       await cargarJuegos();
       try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Reactivar todos los premios", p_detalle: "Se marcaron todos como disponibles" }); } catch(e) {}
+    }
+
+    async function eliminarTodosLosJuegos() {
+      const cantidad = JUEGOS_CACHE.length;
+      if (!cantidad) { alert("No hay premios para eliminar."); return; }
+      if (!confirm(`¿Eliminar TODOS los premios (${cantidad})?\n\nEsta acción no se puede deshacer. Después podrás escribir la lista desde cero.`)) return;
+
+      const { error } = await _supabase.from('tablero_juegos').delete().eq('tenant_id', window.MI_TENANT_ID);
+      if (error) { alert("❌ " + error.message); return; }
+
+      JUEGO_EN_EDICION = null;
+      await cargarJuegos();
+      try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Eliminar todos los premios", p_detalle: `Se eliminaron ${cantidad} premio(s)` }); } catch(e) {}
     }
 
     async function eliminarJuego(id) {
