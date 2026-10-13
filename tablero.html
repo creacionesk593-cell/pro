@@ -160,6 +160,10 @@
 
   <button id="btnAltavoz" onclick="toggleControlVolumen()" style="display:none; position:fixed; bottom:14px; right:68px; width:46px; height:46px; border-radius:50%; background:#2c3e50; color:white; border:none; font-size:1.3rem; cursor:pointer; z-index:9998; box-shadow:0 2px 8px rgba(0,0,0,0.4);">🔊</button>
 
+  <!-- Voz de los números: solo aparece si el organizador lo activó y el tablero está visible.
+       Comparte posición con el botón de música porque nunca se ven a la vez (la música es de la espera). -->
+  <button id="btnVozNumeros" onclick="alternarVozParticipante()" title="Escuchar los números en voz alta" style="display:none; position:fixed; bottom:14px; right:122px; width:46px; height:46px; border-radius:50%; background:#2c3e50; color:white; border:none; font-size:1.3rem; cursor:pointer; z-index:9998; box-shadow:0 2px 8px rgba(0,0,0,0.4);">🔇</button>
+
   <!-- Música suave de espera: solo se muestra mientras el tablero está oculto -->
   <button id="btnMusicaEspera" onclick="alternarMusicaEspera()" title="Activar la música de espera" style="display:none; position:fixed; bottom:14px; right:122px; width:46px; height:46px; border-radius:50%; background:#2c3e50; color:white; border:none; font-size:1.3rem; cursor:pointer; z-index:9998; box-shadow:0 2px 8px rgba(0,0,0,0.4);">🔇</button>
 
@@ -498,6 +502,8 @@
       // (columna en PC, cuadrícula en celular). Antes se forzaba "flex" aquí, y
       // eso pisaba las reglas de CSS de los diseños.
       document.getElementById("zonaCamaras").style.display = visible ? "" : "none";
+
+      gestionarVozParticipante(tablero, visible);
 
       // El botón BINGO solo existe mientras el tablero está visible Y el
       // organizador lo activó. Se decide ANTES del return de abajo: si no,
@@ -923,6 +929,115 @@
         if (e.target && e.target.closest && e.target.closest('#btnMusicaEspera')) return; // ese botón se encarga solo
         huboGestoUsuario = true;
         if (hayEsperaVisible && musicaEsperaPermitida() && !musicaEspera) iniciarMusicaEspera();
+      }, true);
+    });
+
+    /* =========================================================================
+       VOZ PARA LOS NÚMEROS — usa el lector de voz del propio dispositivo (Web
+       Speech API); no hay audios ni servicios externos.
+       - Solo existe si el organizador activó "Cantar los números en voz alta"
+         (tablero_bingo.voz_numeros_activa) y el tablero está visible.
+       - Viene APAGADA: cada participante la activa con un toque en 🗣️. Los
+         navegadores no dejan hablar sin que la persona toque la pantalla antes.
+       - Se acuerda de la elección en este dispositivo, pero tras recargar la
+         página hace falta un primer toque en cualquier parte para que vuelva a
+         sonar (regla del navegador).
+       - Cada dispositivo usa su propia voz: se elige sola la mejor en español.
+       - Habla cada número NUEVO. Al cargar la página, al deshacer un número o al
+         reiniciar la partida NO habla.
+       ========================================================================= */
+    const LETRAS_VOZ = { B: 'Be', I: 'I', N: 'Ene', G: 'Ge', O: 'O' };
+    const ORDEN_VOCES_ES = ['es-ec', 'es-mx', 'es-us', 'es-419', 'es-co', 'es-pe', 'es-ve', 'es-ar', 'es-cl', 'es-es'];
+    let vozFlagActiva = false;         // el organizador la activó Y el tablero está visible
+    let vozConLetra = true;
+    let vozDesbloqueada = false;       // ya hubo un toque de la persona que permite hablar
+    let NUMEROS_VISTOS_VOZ = null;     // null = primera carga: no habla
+
+    function vozSoportada() { return 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window; }
+    function claveVozNumeros() { return 'tubingo_voz_numeros_' + MI_TENANT_ID; }
+    function vozPermitida() { try { return localStorage.getItem(claveVozNumeros()) === '1'; } catch (e) { return false; } }
+    function guardarPermisoVoz(activa) { try { localStorage.setItem(claveVozNumeros(), activa ? '1' : '0'); } catch (e) {} }
+
+    function letraDeNumero(n) { return n <= 15 ? 'B' : n <= 30 ? 'I' : n <= 45 ? 'N' : n <= 60 ? 'G' : 'O'; }
+    function textoParaVoz(n, conLetra) { return conLetra ? `${LETRAS_VOZ[letraDeNumero(n)]}, ${n}` : String(n); }
+
+    function mejorVozEspanol() {
+      const voces = (speechSynthesis.getVoices && speechSynthesis.getVoices()) || [];
+      const lang = v => String(v.lang || '').toLowerCase().replace('_', '-');
+      const es = voces.filter(v => lang(v).startsWith('es'));
+      if (!es.length) return null;
+      const pos = v => { const i = ORDEN_VOCES_ES.indexOf(lang(v)); return i === -1 ? 99 : i; };
+      return es.sort((a, b) => pos(a) - pos(b))[0];
+    }
+
+    function hablarParticipante(texto, volumen) {
+      if (!vozSoportada()) return;
+      try {
+        const u = new SpeechSynthesisUtterance(texto);
+        const voz = mejorVozEspanol();
+        if (voz) { u.voice = voz; u.lang = voz.lang; } else { u.lang = 'es-ES'; }
+        if (typeof volumen === 'number') u.volume = volumen;
+        if (speechSynthesis.pending) speechSynthesis.cancel(); // se descartan los atrasados
+        speechSynthesis.speak(u);
+      } catch (e) {}
+    }
+
+    function actualizarBotonVoz() {
+      const b = document.getElementById("btnVozNumeros");
+      if (!b) return;
+      const sonando = vozPermitida() && vozDesbloqueada;
+      b.style.display = vozFlagActiva ? "block" : "none";
+      b.innerText = sonando ? "🗣️" : "🔇";
+      b.style.background = sonando ? "#27ae60" : "#2c3e50";
+      b.title = sonando ? "Apagar la voz de los números"
+        : (vozPermitida() ? "Toca para volver a activar la voz de los números" : "Escuchar los números en voz alta");
+    }
+
+    // Se llama en cada actualización del tablero (también cuando está oculto).
+    function gestionarVozParticipante(tablero, visible) {
+      vozFlagActiva = visible && !!tablero.voz_numeros_activa && vozSoportada();
+      vozConLetra = tablero.voz_incluir_letra !== false;
+
+      const numeros = Array.isArray(tablero.numeros_marcados) ? tablero.numeros_marcados : [];
+      if (NUMEROS_VISTOS_VOZ === null) {
+        NUMEROS_VISTOS_VOZ = numeros.slice(); // primera carga: solo toma nota
+      } else {
+        const vistos = new Set(NUMEROS_VISTOS_VOZ);
+        const nuevos = numeros.filter(n => !vistos.has(n)); // deshacer/reiniciar no generan "nuevos"
+        NUMEROS_VISTOS_VOZ = numeros.slice();
+        if (vozFlagActiva && vozPermitida() && vozDesbloqueada && nuevos.length) {
+          nuevos.slice(-3).forEach(n => hablarParticipante(textoParaVoz(n, vozConLetra)));
+        }
+      }
+
+      // Si el organizador la apagó o el tablero se ocultó, se calla lo pendiente
+      if (!vozFlagActiva && vozSoportada()) { try { speechSynthesis.cancel(); } catch (e) {} }
+      actualizarBotonVoz();
+    }
+
+    function alternarVozParticipante() {
+      if (!vozSoportada()) { alert("Tu navegador no puede leer en voz alta."); return; }
+      if (vozPermitida() && vozDesbloqueada) {          // estaba activa → se apaga
+        guardarPermisoVoz(false);
+        try { speechSynthesis.cancel(); } catch (e) {}
+      } else {                                           // se activa (este toque es el que "desbloquea" el audio)
+        guardarPermisoVoz(true);
+        vozDesbloqueada = true;
+        hablarParticipante("Voz de números activada");
+      }
+      actualizarBotonVoz();
+    }
+
+    // Si la persona ya la había activado antes, el primer toque en cualquier parte
+    // de la página vuelve a "desbloquear" el audio (en silencio). El toque sobre el
+    // propio botón se ignora aquí: lo maneja alternarVozParticipante().
+    ['click', 'touchend', 'keydown'].forEach(evento => {
+      document.addEventListener(evento, (e) => {
+        if (vozDesbloqueada || !vozSoportada() || !vozPermitida()) return;
+        if (e.target && e.target.closest && e.target.closest('#btnVozNumeros')) return;
+        vozDesbloqueada = true;
+        hablarParticipante(" ", 0); // utterance en silencio, solo para desbloquear
+        actualizarBotonVoz();
       }, true);
     });
 
