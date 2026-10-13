@@ -90,6 +90,37 @@
             onkeydown="if(event.key==='Enter'){ event.preventDefault(); marcarNumeroManual(); }">
           <button type="button" id="btnMarcarManual" class="accion" style="margin:0; width:auto; background:#27ae60;" onclick="marcarNumeroManual()">✔️ Marcar</button>
         </div>
+        <div id="bloqueVoz" style="margin:4px 0 14px 0;">
+          <label style="display:flex; align-items:center; gap:8px; font-weight:bold; cursor:pointer;">
+            <input type="checkbox" id="chkVozNumeros" style="width:auto;" onchange="guardarVozNumeros()">
+            🗣️ Cantar los números en voz alta
+          </label>
+          <p id="estadoVozNumeros" style="font-size:0.8rem; margin:4px 0 0 26px; min-height:16px; color:#7f8c8d;">
+            Al marcar un número nuevo, este panel lo dice en voz alta, y a los participantes les aparece un botón 🗣️ para escucharlo en su dispositivo.
+          </p>
+
+          <div id="panelVoz" style="display:none; background:#f8f9fa; border:1px solid #e1e4e8; border-radius:8px; padding:12px; margin-top:8px;">
+            <div style="display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end;">
+              <div style="flex:1; min-width:220px;">
+                <label for="selVoz" style="font-size:0.8rem; font-weight:bold; display:block; margin-bottom:3px;">Voz de este navegador:</label>
+                <select id="selVoz" onchange="cambiarVozAdmin()" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:6px;"></select>
+              </div>
+              <div style="min-width:170px;">
+                <label for="rngVozVelocidad" style="font-size:0.8rem; font-weight:bold; display:block; margin-bottom:3px;">Velocidad: <span id="valorVelocidadVoz">1.0</span>×</label>
+                <input type="range" id="rngVozVelocidad" min="0.6" max="1.4" step="0.05" value="1" oninput="mostrarVelocidadVoz()" onchange="cambiarVelocidadVoz()" style="width:100%;">
+              </div>
+            </div>
+            <label style="display:flex; align-items:center; gap:8px; margin-top:10px; font-size:0.9rem;">
+              <input type="checkbox" id="chkVozLetra" style="width:auto;" onchange="guardarVozLetra()">
+              Decir también la letra (por ejemplo: "Be, doce")
+            </label>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+              <button type="button" class="accion" style="margin:0; width:auto; padding:7px 12px; font-size:0.85rem; background:#3498db;" onclick="probarVozAdmin()">▶️ Probar voz</button>
+              <button type="button" class="accion" style="margin:0; width:auto; padding:7px 12px; font-size:0.85rem; background:#8e44ad;" onclick="repetirUltimoNumero()">🔁 Repetir el último número</button>
+            </div>
+            <p id="avisoVoz" style="font-size:0.78rem; color:#7f8c8d; margin:10px 0 0 0;"></p>
+          </div>
+        </div>
         <button id="btnReiniciarPartida" class="accion" style="background:#e74c3c;" onclick="reiniciarPartida()">🔄 Reiniciar Partida (vaciar todos los números)</button>
         <div class="grid-numeros" id="gridNumeros"></div>
       </div>
@@ -512,6 +543,8 @@
     function pintarEstado() {
       document.querySelectorAll(".num-btn").forEach(el => el.classList.remove("marcado", "actual"));
       const marcados = TABLERO_ACTUAL.numeros_marcados || [];
+      pintarControlesVoz();
+      anunciarNumerosNuevosAdmin(marcados);
       marcados.forEach(n => document.getElementById("num-" + n)?.classList.add("marcado"));
       if (marcados.length > 0) {
         document.getElementById("num-" + marcados[marcados.length - 1])?.classList.add("actual");
@@ -610,6 +643,200 @@
 
         try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Desactivar vista previa de cámara", p_detalle: "" }); } catch(e) {}
       }
+    }
+
+    /* =========================================================================
+       VOZ PARA CANTAR LOS NÚMEROS — usa el lector de voz del propio navegador
+       (Web Speech API): no hay audios ni servicios externos.
+       - El check se guarda en tablero_bingo.voz_numeros_activa: lo ven también
+         los participantes (les aparece un botón 🗣️ en tablero.html).
+       - La VOZ elegida y la velocidad se guardan solo en este navegador: las
+         voces pertenecen a cada dispositivo y no se pueden enviar a otros.
+       - Habla cada número NUEVO que aparece en el tablero (sin importar si lo
+         marcaste aquí o desde otra pantalla). Al deshacer un número, reiniciar la
+         partida o recargar la página NO habla.
+       ========================================================================= */
+    const LETRAS_VOZ = { B: 'Be', I: 'I', N: 'Ene', G: 'Ge', O: 'O' };
+    const ORDEN_VOCES_ES = ['es-ec', 'es-mx', 'es-us', 'es-419', 'es-co', 'es-pe', 'es-ve', 'es-ar', 'es-cl', 'es-es'];
+
+    function vozSoportadaAdmin() { return 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window; }
+
+    function letraDeNumero(n) { return n <= 15 ? 'B' : n <= 30 ? 'I' : n <= 45 ? 'N' : n <= 60 ? 'G' : 'O'; }
+    function textoParaVoz(n, conLetra) { return conLetra ? `${LETRAS_VOZ[letraDeNumero(n)]}, ${n}` : String(n); }
+
+    function claveVozAdmin() { return 'tubingo_voz_admin_' + window.MI_TENANT_ID; }
+    function leerPrefsVoz() {
+      try { return JSON.parse(localStorage.getItem(claveVozAdmin())) || {}; } catch (e) { return {}; }
+    }
+    function guardarPrefsVoz(parcial) {
+      try { localStorage.setItem(claveVozAdmin(), JSON.stringify({ ...leerPrefsVoz(), ...parcial })); } catch (e) {}
+    }
+
+    function normalizarLang(v) { return String((v && v.lang) || '').toLowerCase().replace('_', '-'); }
+    function esVozEspanol(v) { return normalizarLang(v).startsWith('es'); }
+    function posicionVoz(v) { const i = ORDEN_VOCES_ES.indexOf(normalizarLang(v)); return i === -1 ? 99 : i; }
+
+    // Voces en español primero (las de Latinoamérica antes que la de España), luego las demás
+    function listarVocesOrdenadas() {
+      if (!vozSoportadaAdmin()) return [];
+      const todas = (speechSynthesis.getVoices && speechSynthesis.getVoices()) || [];
+      const es = todas.filter(esVozEspanol).sort((a, b) => posicionVoz(a) - posicionVoz(b) || a.name.localeCompare(b.name));
+      const otras = todas.filter(v => !esVozEspanol(v)).sort((a, b) => a.name.localeCompare(b.name));
+      return [...es, ...otras];
+    }
+
+    function vozElegidaAdmin() {
+      const voces = listarVocesOrdenadas();
+      if (!voces.length) return null;
+      const guardada = leerPrefsVoz().voiceURI;
+      return voces.find(v => v.voiceURI === guardada) || voces[0]; // si no eligió ninguna: la mejor en español
+    }
+
+    function velocidadVozAdmin() {
+      const v = parseFloat(leerPrefsVoz().rate);
+      return isFinite(v) && v >= 0.5 && v <= 2 ? v : 1;
+    }
+
+    function hablarAdmin(texto) {
+      if (!vozSoportadaAdmin()) return;
+      try {
+        const u = new SpeechSynthesisUtterance(texto);
+        const voz = vozElegidaAdmin();
+        if (voz) { u.voice = voz; u.lang = voz.lang; } else { u.lang = 'es-ES'; }
+        u.rate = velocidadVozAdmin();
+        // Si ya hay números esperando su turno, se descartan los atrasados:
+        // lo que importa es decir el más reciente.
+        if (speechSynthesis.pending) speechSynthesis.cancel();
+        speechSynthesis.speak(u);
+      } catch (e) { console.error("No se pudo hablar:", e); }
+    }
+
+    function llenarSelectorVoces() {
+      const sel = document.getElementById("selVoz");
+      const aviso = document.getElementById("avisoVoz");
+      if (!sel) return;
+
+      if (!vozSoportadaAdmin()) {
+        sel.innerHTML = `<option>Este navegador no tiene lector de voz</option>`;
+        sel.disabled = true;
+        aviso.textContent = "⚠️ Este navegador no puede leer en voz alta. Prueba con Chrome o Edge.";
+        return;
+      }
+
+      const voces = listarVocesOrdenadas();
+      if (!voces.length) {
+        sel.innerHTML = `<option>Cargando voces…</option>`;
+        aviso.textContent = "Si esta lista queda vacía, tu navegador no tiene voces disponibles (en Brave suelen salir solo las que trae Windows).";
+        return;
+      }
+
+      const elegida = vozElegidaAdmin();
+      sel.innerHTML = voces.map(v => {
+        const nombre = String(v.name).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+        return `<option value="${String(v.voiceURI).replace(/"/g, '&quot;')}" ${elegida && v.voiceURI === elegida.voiceURI ? 'selected' : ''}>${nombre} — ${v.lang}</option>`;
+      }).join("");
+      sel.disabled = false;
+
+      const hayEspanol = voces.some(esVozEspanol);
+      aviso.textContent = hayEspanol
+        ? "Las voces en español aparecen primero. Los participantes oyen la voz de SU propio dispositivo (no esta)."
+        : "⚠️ Este navegador no tiene voces en español, así que se oirá con acento extranjero. En Windows se instalan en Configuración → Hora e idioma → Voz; también puedes probar Chrome o Edge.";
+
+      const rng = document.getElementById("rngVozVelocidad");
+      rng.value = velocidadVozAdmin();
+      mostrarVelocidadVoz();
+    }
+
+    function cambiarVozAdmin() {
+      guardarPrefsVoz({ voiceURI: document.getElementById("selVoz").value });
+      probarVozAdmin();
+    }
+    function mostrarVelocidadVoz() {
+      document.getElementById("valorVelocidadVoz").textContent = Number(document.getElementById("rngVozVelocidad").value).toFixed(2).replace(/0$/, '');
+    }
+    function cambiarVelocidadVoz() {
+      guardarPrefsVoz({ rate: document.getElementById("rngVozVelocidad").value });
+      probarVozAdmin();
+    }
+
+    function incluirLetraVoz() { return TABLERO_ACTUAL.voz_incluir_letra !== false; }
+    function probarVozAdmin() { hablarAdmin(textoParaVoz(12, incluirLetraVoz())); }
+    function repetirUltimoNumero() {
+      const marcados = TABLERO_ACTUAL.numeros_marcados || [];
+      if (!marcados.length) { alert("Todavía no se ha marcado ningún número."); return; }
+      hablarAdmin(textoParaVoz(marcados[marcados.length - 1], incluirLetraVoz()));
+    }
+
+    function pintarControlesVoz() {
+      const chk = document.getElementById("chkVozNumeros");
+      if (!chk) return;
+      chk.checked = !!TABLERO_ACTUAL.voz_numeros_activa;
+      document.getElementById("panelVoz").style.display = chk.checked ? "block" : "none";
+      document.getElementById("chkVozLetra").checked = incluirLetraVoz();
+      // Si el check ya estaba activo al abrir la página, el selector se llena aquí
+      if (chk.checked && document.getElementById("selVoz").options.length === 0) llenarSelectorVoces();
+    }
+
+    // null = todavía no se cargó nada: la PRIMERA carga solo toma nota de los
+    // números que ya estaban, no los dice.
+    let NUMEROS_VISTOS_ADMIN = null;
+    function anunciarNumerosNuevosAdmin(marcados) {
+      const actual = Array.isArray(marcados) ? marcados : [];
+      if (NUMEROS_VISTOS_ADMIN === null) { NUMEROS_VISTOS_ADMIN = actual.slice(); return; }
+
+      const vistos = new Set(NUMEROS_VISTOS_ADMIN);
+      const nuevos = actual.filter(n => !vistos.has(n)); // al deshacer o reiniciar no hay "nuevos"
+      NUMEROS_VISTOS_ADMIN = actual.slice();
+
+      if (!TABLERO_ACTUAL.voz_numeros_activa || !nuevos.length) return;
+      nuevos.slice(-3).forEach(n => hablarAdmin(textoParaVoz(n, incluirLetraVoz()))); // máximo los 3 últimos
+    }
+
+    async function guardarVozNumeros() {
+      const chk = document.getElementById("chkVozNumeros");
+      const activo = chk.checked;
+      const estado = document.getElementById("estadoVozNumeros");
+      estado.style.color = "#7f8c8d"; estado.innerText = "Guardando...";
+
+      const { error } = await _supabase.from('tablero_bingo').update({ voz_numeros_activa: activo }).eq('tenant_id', window.MI_TENANT_ID);
+      if (error) {
+        chk.checked = !activo; // no se guardó: se deja como estaba
+        estado.style.color = "#e74c3c";
+        estado.innerText = /voz_numeros_activa/.test(error.message)
+          ? "❌ Falta correr sql_voz_numeros.sql en Supabase (la columna todavía no existe)."
+          : "❌ No se guardó: " + error.message;
+        return;
+      }
+
+      const { data } = await _supabase.from('tablero_bingo').select('voz_numeros_activa').eq('tenant_id', window.MI_TENANT_ID).maybeSingle();
+      TABLERO_ACTUAL.voz_numeros_activa = data ? !!data.voz_numeros_activa : activo;
+      pintarControlesVoz();
+      if (TABLERO_ACTUAL.voz_numeros_activa) { llenarSelectorVoces(); hablarAdmin("Voz de números activada"); }
+
+      estado.style.color = "#2ecc71";
+      estado.innerText = TABLERO_ACTUAL.voz_numeros_activa
+        ? "✅ Activa — este panel dirá cada número nuevo, y los participantes verán un botón 🗣️ para escucharlo (con la voz de su propio dispositivo)."
+        : "✅ Apagada — nadie oirá los números.";
+
+      try { await _supabase.rpc('registrar_log', { p_tenant_id: window.MI_TENANT_ID, p_accion: "Cambiar voz de los números", p_detalle: activo ? "Activada" : "Desactivada" }); } catch(e) {}
+    }
+
+    async function guardarVozLetra() {
+      const chk = document.getElementById("chkVozLetra");
+      const conLetra = chk.checked;
+      const { error } = await _supabase.from('tablero_bingo').update({ voz_incluir_letra: conLetra }).eq('tenant_id', window.MI_TENANT_ID);
+      if (error) {
+        chk.checked = !conLetra;
+        alert(/voz_incluir_letra/.test(error.message) ? "❌ Falta correr sql_voz_numeros.sql en Supabase." : "❌ " + error.message);
+        return;
+      }
+      TABLERO_ACTUAL.voz_incluir_letra = conLetra;
+      probarVozAdmin();
+    }
+
+    // Las voces se cargan solas un instante después de abrir la página
+    if (vozSoportadaAdmin() && speechSynthesis.addEventListener) {
+      speechSynthesis.addEventListener('voiceschanged', () => { if (document.getElementById("selVoz")) llenarSelectorVoces(); });
     }
 
     async function alternarNumero(n) {
